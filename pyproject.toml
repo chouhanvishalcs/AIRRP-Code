@@ -1,0 +1,15 @@
+[project]
+name = "airrp-ingest"
+version = "0.1.0"
+description = "Deterministic import of control catalogs (NIST OSCAL) into the AIRRP master control repository"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+airrp-ingest = "airrp_ingest.cli:main"
+
+[tool.setuptools]
+packages = ["airrp_ingest"]
+
+[tool.setuptools.package-data]
+airrp_ingest = ["vocab.json"]

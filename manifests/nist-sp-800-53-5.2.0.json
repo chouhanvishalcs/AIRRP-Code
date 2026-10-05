@@ -1,0 +1,14 @@
+{
+  "framework_code": "NIST-SP-800-53",
+  "framework_version": "5.2.0",
+  "source": "https://github.com/usnistgov/oscal-content/blob/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
+  "source_sha256": "01f37cf90ea99d92242c936cbfbdebcc338eef1f71454e2acac36cc56e9bc062",
+  "control_ids_sha256": "4036cfc6563b8ffb06f3120c5e9496d73e91b299cccc74d78378af273ae0aae0",
+  "expected": {
+    "controls_total": 1196,
+    "active": 1014,
+    "withdrawn": 182,
+    "enhancements": 872,
+    "groups": 20
+  }
+}

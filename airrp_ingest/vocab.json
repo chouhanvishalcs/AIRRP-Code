@@ -1,0 +1,17 @@
+{
+  "_note": "Formatting variants only are merged via aliases. Semantic overlaps still need an owner decision: SecurityMonitoring vs LoggingAndMonitoring, DataProtection vs DataSecurityAndPrivacy, Resilience vs BusinessContinuity.",
+  "domains": ["BusinessContinuity", "ChangeManagement", "Cryptography", "DataProtection", "DataSecurityAndPrivacy",
+              "Governance", "IdentityAndAccess", "IncidentResponse", "LoggingAndMonitoring", "NetworkSecurity",
+              "PeopleSecurity", "PhysicalSecurity", "Privacy", "Resilience", "SecureEngineering",
+              "SecurityMonitoring", "SecurityOperations", "ThirdPartyRisk", "VulnerabilityManagement"],
+  "domain_aliases": {
+    "Business Continuity": "BusinessContinuity", "Change Management": "ChangeManagement",
+    "Data Security and Privacy": "DataSecurityAndPrivacy", "Identity and Access": "IdentityAndAccess",
+    "Incident Response": "IncidentResponse", "Logging and Monitoring": "LoggingAndMonitoring",
+    "Third-Party Risk": "ThirdPartyRisk", "Vulnerability Management": "VulnerabilityManagement"
+  },
+  "frequencies": ["Continuous", "Annual", "AnnualAndPerIncident", "PerChange", "PerUse", "AsRequired"],
+  "frequency_aliases": {"Annual and per incident": "AnnualAndPerIncident", "Per change": "PerChange", "Per use": "PerUse"},
+  "control_types": ["Preventive", "Detective", "Corrective", "PreventiveAndDetective"],
+  "control_type_aliases": {"Preventive and Detective": "PreventiveAndDetective"}
+}

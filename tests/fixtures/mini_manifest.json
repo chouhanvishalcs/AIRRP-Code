@@ -1,0 +1,10 @@
+{
+ "framework_version": "5.2.0",
+ "expected": {
+  "controls_total": 7,
+  "active": 6,
+  "withdrawn": 1,
+  "enhancements": 4,
+  "groups": 2
+ }
+}
