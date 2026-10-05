@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import sys
 
 from .bundle import build_bundle, write_bundle
@@ -12,7 +13,7 @@ from .masters import DuplicateSuspect, create_master, update_master
 from .oscal import load_catalog
 from .pipeline import PlanBlocked, apply_plan, build_plan, verify_repository
 from .similarity import suggest
-from .store import SqliteRepository
+from .store import open_repository
 from .validate import load_manifest
 
 
@@ -31,7 +32,7 @@ def _print_plan(plan, limit=15, show_warnings=False):
 
 
 def cmd_import(a):
-    repo = SqliteRepository(a.db, four_eyes=not a.solo)
+    repo = open_repository(a.db, four_eyes=not a.solo)
     parsed = load_catalog(a.catalog, a.framework_code)
     plan = build_plan(parsed, repo, load_manifest(a.manifest), load_curation(a.curation))
     _print_plan(plan, show_warnings=a.show_warnings)
@@ -51,7 +52,7 @@ def cmd_import(a):
 
 
 def cmd_verify(a):
-    repo = SqliteRepository(a.db, four_eyes=not a.solo)
+    repo = open_repository(a.db, four_eyes=not a.solo)
     problems = verify_repository(repo, load_catalog(a.catalog, a.framework_code), load_curation(a.curation))
     for p in problems:
         print("DRIFT", p)
@@ -60,7 +61,7 @@ def cmd_verify(a):
 
 
 def cmd_master(a):
-    repo = SqliteRepository(a.db, four_eyes=not a.solo)
+    repo = open_repository(a.db, four_eyes=not a.solo)
     actor = a.actor or getpass.getuser()
     if a.action == "approve":
         repo.approve_master_control(a.id, actor)
@@ -72,7 +73,7 @@ def cmd_master(a):
         print("updated", a.id, "remaining flags:", flags or "none")
     elif a.action == "todo":
         import csv
-        rows = repo.conn.execute("SELECT * FROM master_control WHERE status='draft' AND quality_flags<>'[]' ORDER BY id").fetchall()
+        rows = repo.fetchall("SELECT * FROM master_control WHERE status='draft' AND quality_flags<>'[]' ORDER BY id")
         with open(a.out, "w", encoding="utf-8", newline="") as fh:
             w = csv.writer(fh)
             w.writerow(["id", "name", "flags", "domain", "frequency", "control_type", "objective", "description",
@@ -114,13 +115,13 @@ def cmd_master(a):
 
 
 def cmd_suggest(a):
-    n = suggest(SqliteRepository(a.db, four_eyes=not a.solo), a.framework_code, a.version, a.min_score, a.top_k)
+    n = suggest(open_repository(a.db, four_eyes=not a.solo), a.framework_code, a.version, a.min_score, a.top_k)
     print(f"{n} new suggestion(s) queued for review")
     return 0
 
 
 def cmd_review(a):
-    repo = SqliteRepository(a.db, four_eyes=not a.solo)
+    repo = open_repository(a.db, four_eyes=not a.solo)
     if a.action == "list":
         for r in repo.open_suggestions():
             print(f"#{r['id']:<5} {r['score']:.2f}  {r['control_id']:<10} -> {r['master_id']} {r['master']}  [{r['evidence']}]")
@@ -132,7 +133,7 @@ def cmd_review(a):
 
 
 def cmd_export(a):
-    bundle = build_bundle(SqliteRepository(a.db, four_eyes=not a.solo), a.framework_code, a.version)
+    bundle = build_bundle(open_repository(a.db, four_eyes=not a.solo), a.framework_code, a.version)
     if a.format == "requirements":  # exactly the payload shape the existing AIRRP requirement import uses
         keys = ("code", "name", "frequency", "legalText", "legalTitle", "description", "ownerFunction",
                 "obligationType", "regulationCode", "sourceReference")
@@ -147,7 +148,7 @@ def cmd_export(a):
 
 def cmd_migrate(a):
     from .migrate import migrate_dry_or_apply, parse_legacy, read_rows
-    repo = SqliteRepository(a.db, four_eyes=not a.solo)
+    repo = open_repository(a.db, four_eyes=not a.solo)
     report = migrate_dry_or_apply(repo, parse_legacy(read_rows(a.workbook)), a.framework_code, a.version,
                                   a.actor or getpass.getuser(), a.apply)
     if a.report:
@@ -159,6 +160,23 @@ def cmd_migrate(a):
     return 0
 
 
+def cmd_prove(a):
+    from .proof import PostgresProofEngine, SqliteProofEngine, render, run_proof
+    engines = [SqliteProofEngine()]
+    if a.postgres != "off":
+        engines.append(PostgresProofEngine(None if a.postgres == "auto" else a.postgres))
+    claims, meta = run_proof(a.catalog, a.manifest, a.curation, a.workbook, engines,
+                             schema_path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "schema", "import-bundle.schema.json"))
+    text = render(claims, meta)
+    if a.out:
+        with open(a.out, "w", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+        print(f"wrote {a.out}")
+    failed = [c for c in claims if c.status == "FAIL"]
+    print(f"{sum(c.status == 'PASS' for c in claims)} passed, {len(failed)} failed, {sum(c.status == 'SKIP' for c in claims)} skipped")
+    return 1 if failed else 0
+
+
 def cmd_serve(a):
     from .review_ui import serve
     serve(a.db, a.framework_code, a.version, a.port, four_eyes=not a.solo)
@@ -166,9 +184,9 @@ def cmd_serve(a):
 
 
 def cmd_report(a):
-    repo = SqliteRepository(a.db, four_eyes=not a.solo)
+    repo = open_repository(a.db, four_eyes=not a.solo)
     print(json.dumps(repo.coverage(a.framework_code, a.version), indent=2))
-    for row in repo.conn.execute(
+    for row in repo.fetchall(
             "SELECT code, severity, status, COUNT(*) n FROM review_item GROUP BY 1,2,3 ORDER BY n DESC"):
         print(f"review_item {row['status']:<7} {row['severity']:<7} {row['code']:<28} {row['n']}")
     return 0
@@ -176,7 +194,7 @@ def cmd_report(a):
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="airrp-ingest")
-    p.add_argument("--db", default="airrp.db")
+    p.add_argument("--db", default="airrp.db", help="SQLite file path or postgresql:// URL")
     p.add_argument("--actor")
     p.add_argument("--solo", action="store_true", help="allow the same person to create and approve a master control")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -212,6 +230,11 @@ def main(argv=None):
     s = sub.add_parser("migrate-workbook"); s.set_defaults(fn=cmd_migrate)
     s.add_argument("workbook"); s.add_argument("--framework-code", default="NIST-SP-800-53")
     s.add_argument("--version", required=True); s.add_argument("--report"); s.add_argument("--apply", action="store_true")
+
+    s = sub.add_parser("prove"); s.set_defaults(fn=cmd_prove)
+    s.add_argument("--catalog", required=True); s.add_argument("--manifest", required=True)
+    s.add_argument("--curation"); s.add_argument("--workbook"); s.add_argument("--out")
+    s.add_argument("--postgres", default="auto", help="auto (embedded server if pgserver is installed) | off | postgresql://… URL")
 
     s = sub.add_parser("serve"); s.set_defaults(fn=cmd_serve)
     s.add_argument("--framework-code", default="NIST-SP-800-53"); s.add_argument("--version", required=True)

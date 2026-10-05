@@ -19,7 +19,7 @@ BUNDLE_SCHEMA = "airrp-import-bundle/1"
 
 
 def build_bundle(repo, framework_code: str, version: str, profile: Profile = NIST_800_53) -> dict:
-    fw = repo.conn.execute("SELECT * FROM framework WHERE code=? AND version=?", (framework_code, version)).fetchone()
+    fw = repo.fetchone("SELECT * FROM framework WHERE code=? AND version=?", (framework_code, version))
     if fw is None:
         raise ValueError(f"{framework_code}@{version} has not been imported")
     reqs = []
@@ -35,7 +35,7 @@ def build_bundle(repo, framework_code: str, version: str, profile: Profile = NIS
         "master_control_id": r["master_control_id"], "relationship": r["relationship"],
         "is_primary": bool(r["is_primary"]), "rationale": r["rationale"], "reviewer": r["reviewer"],
         "reviewed_at": r["reviewed_at"]}
-        for r in repo.conn.execute(
+        for r in repo.fetchall(
             "SELECT s.control_id, m.* FROM mapping m JOIN source_requirement s ON s.id=m.requirement_id"
             " WHERE m.status='approved' AND s.framework_code=? AND s.framework_version=?"
             " ORDER BY s.id, m.master_control_id", (framework_code, version))]
@@ -54,3 +54,9 @@ def write_bundle(bundle: dict, path: str) -> None:
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(bundle, fh, ensure_ascii=False, indent=1, sort_keys=True)
         fh.write("\n")
+
+
+def bundle_hash(bundle: dict) -> str:
+    """Recompute the content hash a consumer should check before applying a bundle."""
+    body = {k: v for k, v in bundle.items() if k not in ("bundle_sha256", "generated_at")}
+    return sha256_hex(canonical_json(body))

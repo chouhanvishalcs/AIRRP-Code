@@ -1,13 +1,11 @@
-import sqlite3
 import unittest
 
 from airrp_ingest.masters import DuplicateSuspect, create_master, master_id_for
 from airrp_ingest.oscal import load_catalog
 from airrp_ingest.pipeline import apply_plan, build_plan
 from airrp_ingest.similarity import suggest
-from airrp_ingest.store import SqliteRepository
 
-from .helpers import FIXTURE
+from .helpers import FIXTURE, for_each_engine
 
 MASTER = dict(
     name="Manage User and System Accounts", objective="Ensure accounts are uniquely identified, authorised and removed.",
@@ -16,40 +14,40 @@ MASTER = dict(
     evidence="Account inventory, approvals and removal tickets.", test_procedure="Sample accounts across lifecycle events.")
 
 
-def loaded_repo():
-    repo = SqliteRepository(":memory:")
+def loaded_repo(engine):
+    repo, _ = engine.new()
     apply_plan(build_plan(load_catalog(FIXTURE), repo), repo, "tester")
     return repo
 
 
 def requirement_id(repo, control_id):
-    return repo.conn.execute("SELECT id FROM source_requirement WHERE control_id=?", (control_id,)).fetchone()[0]
+    return repo.fetchone("SELECT id FROM source_requirement WHERE control_id=?", (control_id,))[0]
 
 
-class StoreRuleTests(unittest.TestCase):
+class StoreRuleTests:
     def setUp(self):
-        self.repo = loaded_repo()
+        self.repo = loaded_repo(self.engine)
         self.mid = create_master(self.repo, "alice", **MASTER)
         self.repo.approve_master_control(self.mid, "bob")
 
     def test_source_requirements_are_immutable(self):
         for sql in ("UPDATE source_requirement SET title='x'", "DELETE FROM source_requirement"):
-            with self.assertRaises(sqlite3.DatabaseError):
-                self.repo.conn.execute(sql)
+            with self.assertRaises(self.repo.DatabaseError):
+                self.repo.execute(sql)
 
     def test_duplicate_requirement_row_is_impossible(self):
         c = load_catalog(FIXTURE).controls[0]
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(self.repo.IntegrityError):
             self.repo.add_requirement(c, 1)
 
     def test_master_name_variants_collide(self):
         for name in ("manage user and system accounts", "  Manage   User & System-Accounts!! "):
-            with self.assertRaises(sqlite3.IntegrityError):
+            with self.assertRaises(self.repo.IntegrityError):
                 self.repo.add_master_control({**MASTER, "name": name, "id": "OTHER-" + name[:3]}, "alice")
 
     def test_mapping_cannot_be_inserted_as_approved(self):
-        with self.assertRaises(sqlite3.DatabaseError):
-            self.repo.conn.execute(
+        with self.assertRaises(self.repo.DatabaseError):
+            self.repo.execute(
                 "INSERT INTO mapping (requirement_id, master_control_id, status, relationship, rationale, reviewer)"
                 " VALUES (?,?, 'approved','equivalent','r','x')", (requirement_id(self.repo, "AC-2"), self.mid))
 
@@ -84,7 +82,7 @@ class StoreRuleTests(unittest.TestCase):
             self.repo.suggest_mapping(rid, m, 0.5, "x")
         first, second = [r["id"] for r in self.repo.open_suggestions()]
         self.repo.decide_mapping(first, "approved", "bob", "equivalent", "r", primary=True)
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(self.repo.IntegrityError):
             self.repo.decide_mapping(second, "approved", "bob", "subset", "r", primary=True)
 
     def test_withdrawn_requirement_cannot_be_mapped_and_draft_master_cannot_receive_mappings(self):
@@ -95,21 +93,21 @@ class StoreRuleTests(unittest.TestCase):
         self.assertEqual(len(self.repo.open_suggestions()), 1)  # the draft master's suggestion is not reviewable yet
         self.assertEqual(self.repo.blocked_suggestions(), 1)
         for row in self.repo.open_suggestions(ready_only=False):
-            with self.assertRaises(sqlite3.DatabaseError):
+            with self.assertRaises(self.repo.DatabaseError):
                 self.repo.decide_mapping(row["id"], "approved", "bob", "equivalent", "r")
 
     def test_failed_transaction_rolls_back(self):
         with self.assertRaises(RuntimeError):
             with self.repo.transaction():
-                self.repo.conn.execute("DELETE FROM audit_log")
+                self.repo.execute("DELETE FROM audit_log")
                 self.repo.audit("x", "probe", "e", "1", {})
                 raise RuntimeError
-        self.assertEqual(self.repo.conn.execute("SELECT COUNT(*) FROM audit_log WHERE action='probe'").fetchone()[0], 0)
+        self.assertEqual(self.repo.fetchone("SELECT COUNT(*) FROM audit_log WHERE action='probe'")[0], 0)
 
 
-class MasterCreationTests(unittest.TestCase):
+class MasterCreationTests:
     def setUp(self):
-        self.repo = SqliteRepository(":memory:")
+        self.repo, _ = self.engine.new()
 
     def test_aliases_are_normalised_and_id_is_deterministic(self):
         mid = create_master(self.repo, "alice", **MASTER)
@@ -137,20 +135,24 @@ class MasterCreationTests(unittest.TestCase):
             self.repo.approve_master_control(mid, "bob")
 
 
-class SuggestionTests(unittest.TestCase):
+class SuggestionTests:
     def test_suggestions_are_candidates_only_and_idempotent(self):
-        repo = loaded_repo()
+        repo = loaded_repo(self.engine)
         self.assertEqual(suggest(repo, "NIST-SP-800-53", "5.2.0"), 0)  # no approved masters yet
         mid = create_master(repo, "alice", **MASTER)
         repo.approve_master_control(mid, "bob")
         first = suggest(repo, "NIST-SP-800-53", "5.2.0", min_score=0.1)
         self.assertGreater(first, 0)
         self.assertEqual(suggest(repo, "NIST-SP-800-53", "5.2.0", min_score=0.1), 0)
-        statuses = {r[0] for r in repo.conn.execute("SELECT status FROM mapping")}
+        statuses = {r[0] for r in repo.fetchall("SELECT status FROM mapping")}
         self.assertEqual(statuses, {"suggested"})
         top = repo.open_suggestions()[0]
         self.assertTrue(top["control_id"].startswith("AC-2"))
         self.assertEqual(repo.coverage("NIST-SP-800-53", "5.2.0")["with_approved_mapping"], 0)
+
+
+for cls in (StoreRuleTests, MasterCreationTests, SuggestionTests):
+    for_each_engine(cls)
 
 
 if __name__ == "__main__":

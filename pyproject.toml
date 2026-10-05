@@ -5,6 +5,11 @@ description = "Deterministic import of control catalogs (NIST OSCAL) into the AI
 requires-python = ">=3.10"
 dependencies = []
 
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.1"]
+xlsx = ["openpyxl"]
+dev = ["psycopg[binary]>=3.1", "pgserver", "jsonschema", "openpyxl", "playwright"]
+
 [project.scripts]
 airrp-ingest = "airrp_ingest.cli:main"
 

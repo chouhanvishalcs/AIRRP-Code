@@ -77,7 +77,7 @@ def migrate(repo, legacy: list, framework_code: str, version: str, actor: str, a
         for mid, row in masters.items():
             legacy_master = {"id": mid, "name": row["master_name"], **{k: row[k] for k in (
                 "objective", "description", "domain", "frequency", "control_type", "evidence", "test_procedure")}}
-            existing = repo.conn.execute("SELECT 1 FROM master_control WHERE id=?", (mid,)).fetchone()
+            existing = repo.fetchone("SELECT 1 FROM master_control WHERE id=?", (mid,))
             if existing:
                 continue
             try:
@@ -89,10 +89,10 @@ def migrate(repo, legacy: list, framework_code: str, version: str, actor: str, a
             flag_counts.update(flags)
         suggested, skipped, dupes = 0, [], 0
         for r in mappings:
-            req = repo.conn.execute(
+            req = repo.fetchone(
                 "SELECT id FROM source_requirement WHERE framework_code=? AND framework_version=? AND control_id=?"
-                " AND status='active'", (framework_code, version, r["control_id"])).fetchone()
-            has_master = repo.conn.execute("SELECT 1 FROM master_control WHERE id=?", (r["master_id"],)).fetchone()
+                " AND status='active'", (framework_code, version, r["control_id"]))
+            has_master = repo.fetchone("SELECT 1 FROM master_control WHERE id=?", (r["master_id"],))
             if req is None or has_master is None:
                 skipped.append(f"{r['control_id']} -> {r['master_id']}: " + ("requirement not loaded" if req is None else "master not imported"))
                 continue

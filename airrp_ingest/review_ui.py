@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from .masters import DuplicateSuspect, create_master
-from .store import SqliteRepository
+from .store import open_repository
 
 MAX_BODY = 1 << 20
 
@@ -76,8 +76,8 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(200, {
                 "framework": f"{fw[0]}@{fw[1]}", **repo.coverage(*fw),
                 "open_suggestions": len(repo.open_suggestions()), "waiting_on_master_approval": repo.blocked_suggestions(),
-                "masters": {r[0]: r[1] for r in repo.conn.execute("SELECT status, COUNT(*) FROM master_control GROUP BY 1")},
-                "open_review_items": repo.conn.execute("SELECT COUNT(*) FROM review_item WHERE status='open'").fetchone()[0]})
+                "masters": {r[0]: int(r[1]) for r in repo.fetchall("SELECT status, COUNT(*) FROM master_control GROUP BY 1")},
+                "open_review_items": int(repo.fetchone("SELECT COUNT(*) FROM review_item WHERE status='open'")[0])})
         if url.path == "/api/queue":
             return self._send(200, _rows(repo.queue(arg("q"), **page)))
         if url.path == "/api/unmapped":
@@ -85,7 +85,7 @@ class _Handler(BaseHTTPRequestHandler):
         if url.path == "/api/masters":
             return self._send(200, _rows(repo.master_controls()))
         if url.path == "/api/review-items":
-            return self._send(200, _rows(repo.conn.execute(
+            return self._send(200, _rows(repo.fetchall(
                 "SELECT control_id, code, severity, status, message FROM review_item WHERE status<>'resolved' ORDER BY id")))
         self._send(404, {"error": "not found"})
 
@@ -122,10 +122,11 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(400, {"error": str(exc)})
 
 
-def make_server(db_path: str, framework_code: str, version: str, port: int = 8765, token: str = None,
+def make_server(db, framework_code: str, version: str, port: int = 8765, token: str = None,
                 four_eyes: bool = True) -> HTTPServer:
+    """``db`` is a repository instance, a SQLite path or a postgresql:// URL."""
     httpd = HTTPServer(("127.0.0.1", port), _Handler)
-    httpd.repo = SqliteRepository(db_path, four_eyes=four_eyes, check_same_thread=False)
+    httpd.repo = open_repository(db, four_eyes=four_eyes, check_same_thread=False) if isinstance(db, str) else db
     httpd.framework = (framework_code, version)
     httpd.token = token or secrets.token_urlsafe(24)
     return httpd

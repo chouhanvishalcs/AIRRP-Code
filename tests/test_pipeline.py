@@ -6,10 +6,9 @@ import unittest
 from airrp_ingest.curation import field_hash, load_curation
 from airrp_ingest.oscal import load_catalog
 from airrp_ingest.pipeline import PlanBlocked, apply_plan, build_plan, verify_repository
-from airrp_ingest.store import SqliteRepository
 from airrp_ingest.validate import load_manifest
 
-from .helpers import FIXTURE, MANIFEST, find_control, mutated_catalog
+from .helpers import FIXTURE, MANIFEST, find_control, for_each_engine, mutated_catalog
 
 DUP_TEXT = "Require the developer of the system or system component to minimize the use of personally identifiable information in development and test environments."
 
@@ -21,9 +20,9 @@ def curation_file(**doc):
     return path
 
 
-class PipelineTests(unittest.TestCase):
+class PipelineTests:
     def setUp(self):
-        self.repo = SqliteRepository(":memory:")
+        self.repo, self.spec = self.engine.new()
         self.manifest = load_manifest(MANIFEST)
 
     def plan(self, path=FIXTURE, curation=None):
@@ -32,15 +31,15 @@ class PipelineTests(unittest.TestCase):
     def test_dry_run_writes_nothing_and_quarantines_the_duplicate_pair(self):
         plan = self.plan()
         self.assertEqual((len(plan.to_add), sorted(plan.quarantined)), (5, ["SA-15(12)", "SA-15(13)"]))
-        self.assertEqual(self.repo.conn.execute("SELECT COUNT(*) FROM source_requirement").fetchone()[0], 0)
+        self.assertEqual(self.repo.fetchone("SELECT COUNT(*) FROM source_requirement")[0], 0)
 
     def test_apply_is_idempotent(self):
         apply_plan(self.plan(), self.repo, "tester")
         again = self.plan()
         self.assertEqual((len(again.to_add), len(again.unchanged), len(again.conflicts)), (0, 5, 0))
         apply_plan(again, self.repo, "tester")
-        self.assertEqual(self.repo.conn.execute("SELECT COUNT(*) FROM source_requirement").fetchone()[0], 5)
-        self.assertEqual(self.repo.conn.execute("SELECT COUNT(*) FROM review_item WHERE status='open'").fetchone()[0], 2)
+        self.assertEqual(self.repo.fetchone("SELECT COUNT(*) FROM source_requirement")[0], 5)
+        self.assertEqual(self.repo.fetchone("SELECT COUNT(*) FROM review_item WHERE status='open'")[0], 2)
 
     def test_quarantined_controls_never_reach_the_repository(self):
         apply_plan(self.plan(), self.repo, "tester")
@@ -78,21 +77,21 @@ class PipelineTests(unittest.TestCase):
         self.repo.add_requirement = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
         with self.assertRaises(RuntimeError):
             apply_plan(plan, self.repo, "tester")
-        self.assertEqual(self.repo.conn.execute("SELECT COUNT(*) FROM framework").fetchone()[0], 0)
-        self.assertEqual(self.repo.conn.execute("SELECT COUNT(*) FROM import_run").fetchone()[0], 0)
+        self.assertEqual(self.repo.fetchone("SELECT COUNT(*) FROM framework")[0], 0)
+        self.assertEqual(self.repo.fetchone("SELECT COUNT(*) FROM import_run")[0], 0)
 
     def test_verify_detects_tampering(self):
         apply_plan(self.plan(), self.repo, "tester")
         parsed = load_catalog(FIXTURE)
         self.assertEqual(verify_repository(self.repo, parsed), [])
-        self.repo.conn.execute("DROP TRIGGER source_requirement_no_update")
-        self.repo.conn.execute("UPDATE source_requirement SET statement='tampered' WHERE control_id='AC-1'")
+        self.repo._simulate_out_of_band_tampering()
+        self.repo.execute("UPDATE source_requirement SET statement='tampered' WHERE control_id='AC-1'")
         self.assertTrue(any("AC-1" in p for p in verify_repository(self.repo, parsed)))
 
 
-class CurationTests(unittest.TestCase):
+class CurationTests:
     def setUp(self):
-        self.repo = SqliteRepository(":memory:")
+        self.repo, self.spec = self.engine.new()
         self.manifest = load_manifest(MANIFEST)
 
     def plan(self, cur):
@@ -104,7 +103,7 @@ class CurationTests(unittest.TestCase):
         plan = self.plan(curation_file(waivers=[w]))
         self.assertEqual(sorted(plan.quarantined), ["SA-15(13)"])
         apply_plan(plan, self.repo, "tester")
-        status = dict(self.repo.conn.execute("SELECT control_id, status FROM review_item").fetchall())
+        status = dict(self.repo.fetchall("SELECT control_id, status FROM review_item"))
         self.assertEqual(status, {"SA-15(12)": "waived", "SA-15(13)": "open"})
 
     def test_waiver_for_another_version_does_not_apply(self):
@@ -138,6 +137,10 @@ class CurationTests(unittest.TestCase):
                  source_value_sha256="0" * 64, citation="c", reviewer="r", reviewed_at="d")
         with self.assertRaises(ValueError):
             load_curation(curation_file(overrides=[o]))
+
+
+for_each_engine(PipelineTests)
+for_each_engine(CurationTests)
 
 
 if __name__ == "__main__":

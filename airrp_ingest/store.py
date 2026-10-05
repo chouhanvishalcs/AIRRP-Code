@@ -1,8 +1,9 @@
-"""Repository port + SQLite reference adapter.
+"""Repository port, a portable SQL implementation of it, and the SQLite adapter.
 
-``Repository`` is the only thing the pipeline knows about storage. The AIRRP adapter implements the same
-methods against the real system; the SQLite adapter proves the rules by putting them in the schema, so
-a bug in application code cannot create a duplicate, rewrite source text or approve an unreviewed mapping.
+``Repository`` is the only thing the pipeline knows about storage. ``SqlRepository`` holds every domain rule as plain,
+portable SQL; a dialect subclass (SQLite here, PostgreSQL in ``pg_store``) only supplies the connection, the DDL
+(constraints and triggers are where the invariants live, so a bug in application code cannot create a duplicate,
+rewrite source text or approve an unreviewed mapping) and a handful of engine-specific primitives.
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ RELATIONSHIPS = ("equivalent", "subset", "superset", "intersects")  # NISTIR 847
 
 class Repository(Protocol):
     def transaction(self): ...
+    def lock_framework(self, code: str, version: str) -> None: ...
     def framework_hash(self, code: str, version: str): ...
     def requirement_hashes(self, code: str, version: str) -> dict: ...
     def add_framework(self, fw: FrameworkInfo) -> None: ...
@@ -35,7 +37,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA = """
+SQLITE_SCHEMA = """
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS framework (
@@ -117,13 +119,45 @@ CREATE TABLE IF NOT EXISTS audit_log (
 """
 
 
-class SqliteRepository:
-    def __init__(self, path: str = ":memory:", four_eyes: bool = True, check_same_thread: bool = True):
+class Row(dict):
+    """dict row that also answers ``row[0]`` like sqlite3.Row, so both engines return the same shape."""
+    __slots__ = ()
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self.values())[key]
+        return dict.__getitem__(self, key)
+
+    def __iter__(self):  # like sqlite3.Row: iterating yields values (use .keys() for names)
+        return iter(list(self.values()))
+
+
+class SqlRepository:
+    """All domain rules, written once in portable SQL (``?`` placeholders; dialect subclasses translate)."""
+
+    BEGIN = "BEGIN"
+    IntegrityError: type = sqlite3.IntegrityError
+    DatabaseError: type = sqlite3.DatabaseError
+
+    def __init__(self, four_eyes: bool = True):
         self.four_eyes = four_eyes  # a master control cannot be approved by the person who created it
-        self.conn = sqlite3.connect(path, isolation_level=None, check_same_thread=check_same_thread)
-        self.conn.row_factory = sqlite3.Row
-        self.conn.executescript(SCHEMA)
         self._depth = 0
+
+    # -- dialect hooks ------------------------------------------------------------------------------
+    def execute(self, sql: str, params=()):
+        raise NotImplementedError
+
+    def _insert_returning_id(self, sql: str, params=()) -> int:
+        raise NotImplementedError
+
+    def lock_framework(self, code: str, version: str) -> None:
+        """Serialise concurrent imports of the same framework version (no-op where writers are already serialised)."""
+
+    def fetchone(self, sql: str, params=()):
+        return self.execute(sql, params).fetchone()
+
+    def fetchall(self, sql: str, params=()):
+        return self.execute(sql, params).fetchall()
 
     @contextmanager
     def transaction(self):
@@ -135,36 +169,36 @@ class SqliteRepository:
             finally:
                 self._depth -= 1
             return
-        self.conn.execute("BEGIN IMMEDIATE")
+        self.execute(self.BEGIN)
         self._depth = 1
         try:
             yield
-            self.conn.execute("COMMIT")
+            self.execute("COMMIT")
         except BaseException:
-            self.conn.execute("ROLLBACK")
+            self.execute("ROLLBACK")
             raise
         finally:
             self._depth = 0
 
     # -- source layer ------------------------------------------------------------------------------
     def framework_hash(self, code, version):
-        row = self.conn.execute("SELECT source_sha256 FROM framework WHERE code=? AND version=?", (code, version)).fetchone()
+        row = self.execute("SELECT source_sha256 FROM framework WHERE code=? AND version=?", (code, version)).fetchone()
         return row[0] if row else None
 
     def requirement_hashes(self, code, version):
-        rows = self.conn.execute(
+        rows = self.execute(
             "SELECT control_id, content_hash FROM source_requirement WHERE framework_code=? AND framework_version=?",
             (code, version))
         return {r[0]: r[1] for r in rows}
 
     def add_framework(self, fw):
-        self.conn.execute(
-            "INSERT OR IGNORE INTO framework VALUES (?,?,?,?,?,?,?)",
+        self.execute(
+            "INSERT INTO framework VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
             (fw.code, fw.version, fw.title, fw.oscal_version, fw.last_modified, fw.source_sha256, _now()))
 
     def add_requirement(self, c, run_id):
         payload = asdict(c)
-        self.conn.execute(
+        self.execute(
             "INSERT INTO source_requirement (framework_code, framework_version, control_id, oscal_id, parent_id, kind,"
             " family, title, status, statement, guidance, payload_json, content_hash, import_run_id)"
             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -176,34 +210,33 @@ class SqliteRepository:
         seen = set()
         for severity, icode, control_id, message, status in items:
             seen.add((control_id, icode))
-            self.conn.execute(
+            self.execute(
                 "INSERT INTO review_item (import_run_id, framework_code, framework_version, severity, code, control_id,"
                 " message, status) VALUES (?,?,?,?,?,?,?,?)"
                 " ON CONFLICT (framework_code, framework_version, control_id, code) DO UPDATE SET"
                 " import_run_id=excluded.import_run_id, severity=excluded.severity, message=excluded.message,"
                 " status=excluded.status", (run_id, code, version, severity, icode, control_id, message, status))
-        for row in self.conn.execute(
+        for row in self.execute(
                 "SELECT id, control_id, code FROM review_item WHERE framework_code=? AND framework_version=?"
                 " AND status <> 'resolved'", (code, version)).fetchall():
             if (row["control_id"], row["code"]) not in seen:
-                self.conn.execute("UPDATE review_item SET status='resolved', import_run_id=? WHERE id=?", (run_id, row["id"]))
+                self.execute("UPDATE review_item SET status='resolved', import_run_id=? WHERE id=?", (run_id, row["id"]))
 
     def start_run(self, actor, source_path, source_sha256, framework_code, framework_version):
-        cur = self.conn.execute(
+        return self._insert_returning_id(
             "INSERT INTO import_run (started_at, actor, source_path, source_sha256, framework_code, framework_version)"
             " VALUES (?,?,?,?,?,?)", (_now(), actor, source_path, source_sha256, framework_code, framework_version))
-        return cur.lastrowid
 
     def finish_run(self, run_id, summary):
-        self.conn.execute("UPDATE import_run SET finished_at=?, summary_json=? WHERE id=?",
+        self.execute("UPDATE import_run SET finished_at=?, summary_json=? WHERE id=?",
                           (_now(), canonical_json(summary), run_id))
 
     def audit(self, actor, action, entity, entity_id, detail):
-        self.conn.execute("INSERT INTO audit_log (ts, actor, action, entity, entity_id, detail_json) VALUES (?,?,?,?,?,?)",
+        self.execute("INSERT INTO audit_log (ts, actor, action, entity, entity_id, detail_json) VALUES (?,?,?,?,?,?)",
                           (_now(), actor, action, entity, str(entity_id), canonical_json(detail)))
 
     def requirements(self, code, version, status="active"):
-        return self.conn.execute(
+        return self.execute(
             "SELECT * FROM source_requirement WHERE framework_code=? AND framework_version=? AND status=? ORDER BY id",
             (code, version, status)).fetchall()
 
@@ -212,13 +245,13 @@ class SqliteRepository:
         sql, args = "SELECT * FROM master_control", ()
         if status:
             sql, args = sql + " WHERE status=?", (status,)
-        return self.conn.execute(sql + " ORDER BY id", args).fetchall()
+        return self.execute(sql + " ORDER BY id", args).fetchall()
 
     def add_master_control(self, mc: dict, actor: str, flags=(), source: str = "manual"):
         """Insert as draft. Uniqueness of the canonical name is enforced by the schema."""
         key = master_canonical_key(mc["name"])
         with self.transaction():
-            self.conn.execute(
+            self.execute(
                 "INSERT INTO master_control (id, canonical_key, name, objective, description, domain, frequency,"
                 " control_type, evidence, test_procedure, status, created_by, created_at, source, quality_flags)"
                 " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -234,7 +267,7 @@ class SqliteRepository:
             raise ValueError(f"changes must be a non-empty subset of {sorted(allowed)}")
         with self.transaction():
             sets = ", ".join(f"{k}=?" for k in changes)
-            n = self.conn.execute(f"UPDATE master_control SET {sets}, quality_flags=? WHERE id=? AND status='draft'",
+            n = self.execute(f"UPDATE master_control SET {sets}, quality_flags=? WHERE id=? AND status='draft'",
                                   (*changes.values(), json.dumps(sorted(flags)), master_id)).rowcount
             if n != 1:
                 raise ValueError(f"{master_id!r} is not a draft master control")
@@ -243,13 +276,13 @@ class SqliteRepository:
     def approve_master_control(self, master_id: str, actor: str):
         if not (actor and actor.strip()):
             raise ValueError("an approver is required")
-        row = self.conn.execute("SELECT created_by, quality_flags FROM master_control WHERE id=?", (master_id,)).fetchone()
+        row = self.execute("SELECT created_by, quality_flags FROM master_control WHERE id=?", (master_id,)).fetchone()
         if row and json.loads(row["quality_flags"]):
             raise ValueError(f"cannot approve while quality flags are open: {json.loads(row['quality_flags'])}")
         if row and self.four_eyes and row["created_by"] == actor:
             raise ValueError("four-eyes rule: a different person must approve this master control (use --solo to disable)")
         with self.transaction():
-            n = self.conn.execute(
+            n = self.execute(
                 "UPDATE master_control SET status='approved', approved_by=?, approved_at=? WHERE id=? AND status='draft'",
                 (actor, _now(), master_id)).rowcount
             if n != 1:
@@ -259,9 +292,9 @@ class SqliteRepository:
     # -- mapping layer -----------------------------------------------------------------------------
     def suggest_mapping(self, requirement_id, master_id, score, evidence):
         """Idempotent: an existing row (suggested/approved/rejected) is never overwritten."""
-        cur = self.conn.execute(
-            "INSERT OR IGNORE INTO mapping (requirement_id, master_control_id, status, score, evidence)"
-            " VALUES (?,?,'suggested',?,?)", (requirement_id, master_id, score, evidence))
+        cur = self.execute(
+            "INSERT INTO mapping (requirement_id, master_control_id, status, score, evidence)"
+            " VALUES (?,?,'suggested',?,?) ON CONFLICT DO NOTHING", (requirement_id, master_id, score, evidence))
         return cur.rowcount == 1
 
     def decide_mapping(self, mapping_id, decision, reviewer, relationship=None, rationale="", primary=False):
@@ -274,7 +307,7 @@ class SqliteRepository:
         if not rationale.strip():
             raise ValueError("a rationale is required")
         with self.transaction():
-            n = self.conn.execute(
+            n = self.execute(
                 "UPDATE mapping SET status=?, relationship=?, rationale=?, is_primary=?, reviewer=?, reviewed_at=?"
                 " WHERE id=? AND status='suggested'",
                 (decision, relationship if decision == "approved" else None, rationale,
@@ -286,33 +319,33 @@ class SqliteRepository:
 
     def queue(self, query: str = "", limit: int = 25, offset: int = 0):
         like = f"%{query.lower()}%"
-        return self.conn.execute(
+        return self.execute(
             "SELECT m.id, m.score, m.evidence, r.control_id, r.title, r.statement, c.id AS master_id, c.name AS master,"
             " c.objective, c.description, c.domain, c.frequency, c.control_type"
             " FROM mapping m JOIN source_requirement r ON r.id=m.requirement_id"
             " JOIN master_control c ON c.id=m.master_control_id"
-            " WHERE m.status='suggested' AND c.status='approved' AND (?='%%' OR lower(r.control_id||' '||r.title||' '||c.name) LIKE ?)"
-            " ORDER BY (m.score IS NULL), m.score DESC, m.id LIMIT ? OFFSET ?", (like, like, limit, offset)).fetchall()
+            " WHERE m.status='suggested' AND c.status='approved' AND (? = 1 OR lower(r.control_id||' '||r.title||' '||c.name) LIKE ?)"
+            " ORDER BY (m.score IS NULL), m.score DESC, m.id LIMIT ? OFFSET ?", (int(not query), like, limit, offset)).fetchall()
 
     def unmapped(self, code: str, version: str, query: str = "", limit: int = 25, offset: int = 0):
         like = f"%{query.lower()}%"
-        return self.conn.execute(
+        return self.execute(
             "SELECT r.id, r.control_id, r.title, r.statement FROM source_requirement r"
             " WHERE r.framework_code=? AND r.framework_version=? AND r.status='active'"
             " AND NOT EXISTS (SELECT 1 FROM mapping m WHERE m.requirement_id=r.id AND m.status='approved')"
-            " AND (?='%%' OR lower(r.control_id||' '||r.title||' '||r.statement) LIKE ?)"
-            " ORDER BY r.id LIMIT ? OFFSET ?", (code, version, like, like, limit, offset)).fetchall()
+            " AND (? = 1 OR lower(r.control_id||' '||r.title||' '||r.statement) LIKE ?)"
+            " ORDER BY r.id LIMIT ? OFFSET ?", (code, version, int(not query), like, limit, offset)).fetchall()
 
     def map_requirement(self, code, version, control_id, master_id, reviewer, relationship, rationale, primary=False):
         """Reviewer-initiated mapping (e.g. for requirements the suggester missed): suggest + decide atomically."""
         with self.transaction():
-            row = self.conn.execute(
+            row = self.execute(
                 "SELECT id FROM source_requirement WHERE framework_code=? AND framework_version=? AND control_id=?",
                 (code, version, control_id)).fetchone()
             if row is None:
                 raise ValueError(f"unknown requirement {control_id}")
             self.suggest_mapping(row["id"], master_id, None, "manual")
-            m = self.conn.execute("SELECT id, status FROM mapping WHERE requirement_id=? AND master_control_id=?",
+            m = self.execute("SELECT id, status FROM mapping WHERE requirement_id=? AND master_control_id=?",
                                   (row["id"], master_id)).fetchone()
             if m["status"] != "suggested":
                 raise ValueError(f"this requirement/master pair is already {m['status']}")
@@ -320,7 +353,7 @@ class SqliteRepository:
 
     def open_suggestions(self, ready_only: bool = True):
         """Suggestions a reviewer can act on now (their master control is approved) - or all of them."""
-        return self.conn.execute(
+        return self.execute(
             "SELECT m.id, r.control_id, r.title AS requirement, c.id AS master_id, c.name AS master, m.score, m.evidence"
             " FROM mapping m JOIN source_requirement r ON r.id=m.requirement_id"
             " JOIN master_control c ON c.id=m.master_control_id WHERE m.status='suggested'"
@@ -328,13 +361,44 @@ class SqliteRepository:
             (int(ready_only),)).fetchall()
 
     def blocked_suggestions(self) -> int:
-        return self.conn.execute(
+        return self.execute(
             "SELECT COUNT(*) FROM mapping m JOIN master_control c ON c.id=m.master_control_id"
             " WHERE m.status='suggested' AND c.status<>'approved'").fetchone()[0]
 
     def coverage(self, code, version):
-        row = self.conn.execute(
-            "SELECT COUNT(*) total, SUM(EXISTS(SELECT 1 FROM mapping m WHERE m.requirement_id=r.id AND m.status='approved')) mapped"
+        row = self.execute(
+            "SELECT COUNT(*) total, SUM(CASE WHEN EXISTS(SELECT 1 FROM mapping m WHERE m.requirement_id=r.id AND m.status='approved') THEN 1 ELSE 0 END) mapped"
             " FROM source_requirement r WHERE framework_code=? AND framework_version=? AND status='active'",
             (code, version)).fetchone()
-        return {"active_requirements": row["total"], "with_approved_mapping": row["mapped"] or 0}
+        return {"active_requirements": int(row["total"]), "with_approved_mapping": int(row["mapped"] or 0)}
+
+
+class SqliteRepository(SqlRepository):
+    BEGIN = "BEGIN IMMEDIATE"  # takes the write lock up front: concurrent importers queue instead of racing
+
+    def __init__(self, path: str = ":memory:", four_eyes: bool = True, check_same_thread: bool = True):
+        super().__init__(four_eyes)
+        self.conn = sqlite3.connect(path, isolation_level=None, check_same_thread=check_same_thread, timeout=60)
+        self.conn.row_factory = sqlite3.Row
+        self.conn.executescript(SQLITE_SCHEMA)
+
+    def execute(self, sql, params=()):
+        return self.conn.execute(sql, tuple(params))
+
+    def _insert_returning_id(self, sql, params=()):
+        return self.execute(sql, params).lastrowid
+
+    def close(self):
+        self.conn.close()
+
+    def _simulate_out_of_band_tampering(self):
+        """Test hook: what someone with DDL rights could do. The pipeline must still detect the damage."""
+        self.execute("DROP TRIGGER source_requirement_no_update")
+
+
+def open_repository(spec: str, four_eyes: bool = True, **kw):
+    """``postgresql://...`` -> PostgreSQL, anything else is a SQLite file path (or ':memory:')."""
+    if spec.startswith(("postgres://", "postgresql://")):
+        from .pg_store import PostgresRepository
+        return PostgresRepository(spec, four_eyes=four_eyes, **kw)
+    return SqliteRepository(spec, four_eyes=four_eyes, **kw)

@@ -1,0 +1,5 @@
+# Only needed for the optional engines/tools; the core pipeline has no runtime dependencies.
+psycopg[binary]>=3.1   # PostgreSQL adapter
+pgserver               # embedded PostgreSQL 16 for tests and `prove` (no install, no root)
+jsonschema             # validates bundles against schema/import-bundle.schema.json in tests
+openpyxl               # read the legacy .xlsx workbook

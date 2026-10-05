@@ -52,5 +52,19 @@ python -m airrp_ingest --db airrp.db export --version 5.2.0 --format requirement
 
 A master control cannot be approved by the person who created it (`--solo` disables this for one-person teams).
 
+### Proof and storage engines
+
+```bash
+# executable proof (21 claims) on SQLite and PostgreSQL; exit code 1 if any claim fails. Result of the last run: docs/PROOF.md
+pip install -r requirements-dev.txt
+python -m airrp_ingest prove --catalog data/catalog.json --manifest manifests/nist-sp-800-53-5.2.0.json \
+    --curation curation/nist-sp-800-53.json --workbook Book1.xlsx --out PROOF.md
+# against your own PostgreSQL instead of the embedded one (a throw-away schema is created and left behind):
+python -m airrp_ingest prove ... --postgres postgresql://user:pass@host/db
+
+# every command takes --db <sqlite file> or --db postgresql://user:pass@host/db
+python -m airrp_ingest --db postgresql://user:pass@host/db import data/catalog.json --manifest ... --apply
+```
+
 Tests: `python -m unittest discover -s tests -t .` (set `OSCAL_CATALOG=data/catalog.json` to also run the
-full-catalog reconciliation test). Design and the rules the schema enforces: [docs/DESIGN.md](docs/DESIGN.md).
+full-catalog tests; the storage tests run on SQLite and, when `pgserver`+`psycopg` are installed, on PostgreSQL). Design and the rules the schema enforces: [docs/DESIGN.md](docs/DESIGN.md).

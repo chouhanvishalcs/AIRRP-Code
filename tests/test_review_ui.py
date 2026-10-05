@@ -9,15 +9,15 @@ from airrp_ingest.pipeline import apply_plan, build_plan
 from airrp_ingest.review_ui import make_server
 from airrp_ingest.similarity import suggest
 
-from .helpers import FIXTURE
+from .helpers import FIXTURE, for_each_engine
 from .test_store_masters import MASTER
 
 
-class ReviewUiTests(unittest.TestCase):
+class ReviewUiTests:
     @classmethod
     def setUpClass(cls):
-        cls.httpd = make_server(":memory:", "NIST-SP-800-53", "5.2.0", port=0, token="tok")
-        cls.repo = cls.httpd.repo
+        cls.repo, _ = cls.engine.new()
+        cls.httpd = make_server(cls.repo, "NIST-SP-800-53", "5.2.0", port=0, token="tok")
         apply_plan(build_plan(load_catalog(FIXTURE), cls.repo), cls.repo, "tester")
         mid = create_master(cls.repo, "alice", **MASTER)
         cls.repo.approve_master_control(mid, "bob")
@@ -74,7 +74,7 @@ class ReviewUiTests(unittest.TestCase):
         self.assertEqual(self.call("POST", "/api/decide", {**body, "reviewer": "carol", "rationale": " "})[0], 400)
         self.assertEqual(self.call("POST", "/api/decide", {**body, "reviewer": "carol"})[0], 200)
         self.assertEqual(self.call("POST", "/api/decide", {**body, "reviewer": "carol"})[0], 400)  # already decided
-        row = self.repo.conn.execute("SELECT status, reviewer FROM mapping WHERE id=?", (mapping_id,)).fetchone()
+        row = self.repo.fetchone("SELECT status, reviewer FROM mapping WHERE id=?", (mapping_id,))
         self.assertEqual((row["status"], row["reviewer"]), ("approved", "carol"))
 
     def test_manual_mapping_for_requirement_the_suggester_missed(self):
@@ -103,6 +103,9 @@ class ReviewUiTests(unittest.TestCase):
                                                     "Content-Type": "application/x-www-form-urlencoded"})
         self.assertEqual(conn.getresponse().status, 400)
         self.assertEqual(self.call("GET", "/nope")[0], 404)
+
+
+for_each_engine(ReviewUiTests)
 
 
 if __name__ == "__main__":

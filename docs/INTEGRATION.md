@@ -31,11 +31,16 @@ sourceReference}` objects your system already accepts. Proven identical to the w
 active NIST SP 800-53 r5.2.0 controls (the 1,014th, SA-4(7), differs only by a trailing space that the importer trims from titles).
 `ownerFunction` and `frequency` are exported as empty strings because the source does not define them.
 
-## 3. Storage adapter - `airrp_ingest.store.Repository`
+## 3. Storage adapter - `airrp_ingest.store.SqlRepository`
 
-Implement the same methods (see the Protocol) on top of AIRRP's tables and run `python -m unittest discover -s tests -t .`
-with the repository factory swapped in. The rules that must hold (immutable source rows, unique keys, approval gates,
-four-eyes, quality flags) are listed in DESIGN.md; the SQLite schema in `store.py` is the executable specification.
+All domain rules are written once, as portable SQL, in `SqlRepository`. An adapter only supplies the connection, the DDL
+(constraints, partial unique indexes, triggers), and three primitives (`execute`, `_insert_returning_id`, `lock_framework`).
+Two adapters ship and run the same 118-test contract suite: `SqliteRepository` and `PostgresRepository` (real PostgreSQL 16,
+constraints and plpgsql triggers; see `pg_store.py` for what a second engine needs). For another engine, copy `pg_store.py`,
+translate the DDL, and add it to `ENGINES` in `tests/helpers.py`; if the contract tests pass, the rules hold.
+
+`reference_consumer.py` is the application side of route 1 (idempotent upsert into foreign-keyed tables, hash check, hard failure
+on a dangling reference); its behaviour is part of the proof (claim E7).
 
 ## What would make a native adapter possible (send from your laptop if you want one)
 

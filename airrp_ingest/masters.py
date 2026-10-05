@@ -107,7 +107,7 @@ def import_legacy_master(repo, actor: str, legacy: dict, vocab: dict = None) -> 
 def update_master(repo, actor: str, master_id: str, vocab: dict = None, **fields) -> list:
     """Edit a draft. Submitting a flagged field with a real value clears its flag (AsRequired counts once confirmed)."""
     vocab = vocab or load_vocab()
-    row = repo.conn.execute("SELECT * FROM master_control WHERE id=?", (master_id,)).fetchone()
+    row = repo.fetchone("SELECT * FROM master_control WHERE id=?", (master_id,))
     if row is None:
         raise ValueError(f"unknown master control {master_id!r}")
     changes = {k: v.strip() for k, v in fields.items() if v is not None and str(v).strip() != ""}

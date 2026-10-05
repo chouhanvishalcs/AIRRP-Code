@@ -26,6 +26,7 @@ class Plan:
     issues: list = field(default_factory=list)  # every issue found, waived or not
     waived: list = field(default_factory=list)  # (Issue, waiver dict)
     blockers: list = field(default_factory=list)
+    added: int = 0  # rows actually inserted by apply_plan (may be fewer than to_add if another import won the race)
 
     @property
     def blocked(self) -> bool:
@@ -97,10 +98,21 @@ def apply_plan(plan: Plan, repo, actor: str, source_path: str = "") -> int:
         raise PlanBlocked("; ".join(i.message for i in plan.blockers))
     fw = plan.framework
     with repo.transaction():
+        repo.lock_framework(fw.code, fw.version)
+        # The plan was built before we held the lock: re-check against what is stored *now*, so two importers
+        # racing on the same version end with one set of rows and no duplicates, never a half-applied mix.
+        stored = repo.requirement_hashes(fw.code, fw.version)
+        to_add = []
+        for c in plan.to_add:
+            if c.control_id not in stored:
+                to_add.append(c)
+            elif stored[c.control_id] != c.content_hash:
+                raise PlanBlocked(f"{c.control_id} was changed by another import while this one was running")
+        plan.added = len(to_add)
         run_id = repo.start_run(actor=actor, source_path=source_path, source_sha256=fw.source_sha256,
                                 framework_code=fw.code, framework_version=fw.version)
         repo.add_framework(fw)
-        for c in plan.to_add:
+        for c in to_add:
             repo.add_requirement(c, run_id)
         items = [(i.severity, i.code, cid, i.message, "open")
                  for cid, issues in plan.quarantined.items() for i in issues]
@@ -108,8 +120,8 @@ def apply_plan(plan: Plan, repo, actor: str, source_path: str = "") -> int:
                    f"{i.message} [waived by {w['reviewer']} on {w['reviewed_at']}: {w['reason']}]", "waived")
                   for i, w in plan.waived]
         repo.sync_review_items(run_id, fw.code, fw.version, items)
-        repo.audit(actor, "import.apply", "import_run", run_id, plan.summary())
-        repo.finish_run(run_id, plan.summary())
+        repo.audit(actor, "import.apply", "import_run", run_id, {**plan.summary(), "added": plan.added})
+        repo.finish_run(run_id, {**plan.summary(), "added": plan.added})
     return run_id
 
 

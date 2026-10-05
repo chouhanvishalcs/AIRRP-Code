@@ -88,6 +88,14 @@ requirements stay unmapped, masters with values outside the controlled vocabular
 skipped, and masters spanning more than five NIST families are listed as probable over-broad groupings. Suggestions only
 appear in the reviewer console once their master control is approved.
 
+## Concurrency, engines and proof
+
+Importers of the same framework version serialise on a lock (`BEGIN IMMEDIATE` on SQLite, a transaction-scoped advisory lock on
+PostgreSQL). After taking it, `apply_plan` re-reads what is stored and skips anything another importer already wrote (or aborts if
+the content differs), so racing importers end with exactly one copy of each row. `prove` (see `docs/PROOF.md`) runs 21 claims
+against the real catalog, including four simultaneous importers, fault injection on the source file, tamper detection, the approval
+gates, a handoff to a foreign-keyed application schema, and a cross-engine fingerprint comparison. It is also run in CI.
+
 ## Known limits / next steps
 
 * TF-IDF is a deliberately simple candidate generator (`similarity.Scorer` is pluggable, e.g. embeddings). It only fills a queue.

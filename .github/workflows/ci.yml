@@ -1,0 +1,20 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test-and-prove:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install -r requirements-dev.txt
+      - name: Fetch the NIST OSCAL catalog
+        run: |
+          mkdir -p data
+          curl -fsSL -o data/catalog.json https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json
+      - name: Unit + contract tests on SQLite and PostgreSQL (incl. full catalog)
+        run: OSCAL_CATALOG=data/catalog.json python -m unittest discover -s tests -t .
+      - name: Executable proof
+        run: python -m airrp_ingest prove --catalog data/catalog.json --manifest manifests/nist-sp-800-53-5.2.0.json --curation curation/nist-sp-800-53.json --out PROOF.md
+      - uses: actions/upload-artifact@v4
+        with: {name: proof, path: PROOF.md}
