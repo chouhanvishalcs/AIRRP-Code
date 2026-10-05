@@ -76,6 +76,18 @@ same methods against AIRRP's storage/API, keep the same invariants, and run the 
 to AIRRP's current fields is an adapter concern (for example `requirement.code = f"{framework}-REQ-{control_id}"`,
 `regulationCode`, `sourceReference = <pdf url>#control=<oscal id>`).
 
+## Master control quality gate and legacy migration
+
+`master_control.quality_flags` lists problems that block approval (`PLACEHOLDER_EVIDENCE`, `PLACEHOLDER_TEST_PROCEDURE`,
+`UNCONFIRMED_FREQUENCY`, empty objective/description). The schema refuses `status='approved'` while any flag is open, and
+approval additionally needs a person other than the creator (four-eyes). New master controls cannot use placeholders at all.
+
+`migrate-workbook` maps the existing workbook onto this model without trusting it: every legacy master becomes a *draft* with
+flags, every legacy mapping becomes a *suggestion* (its legacy decision and score kept as evidence), legacy "unmapped"
+requirements stay unmapped, masters with values outside the controlled vocabulary (e.g. frequency `Periodic`) are reported and
+skipped, and masters spanning more than five NIST families are listed as probable over-broad groupings. Suggestions only
+appear in the reviewer console once their master control is approved.
+
 ## Known limits / next steps
 
 * TF-IDF is a deliberately simple candidate generator (`similarity.Scorer` is pluggable, e.g. embeddings). It only fills a queue.

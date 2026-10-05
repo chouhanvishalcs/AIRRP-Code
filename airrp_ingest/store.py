@@ -73,7 +73,10 @@ CREATE TABLE IF NOT EXISTS master_control (
   control_type TEXT NOT NULL, evidence TEXT NOT NULL DEFAULT '', test_procedure TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL CHECK (status IN ('draft','approved','deprecated')),
   created_by TEXT NOT NULL, created_at TEXT NOT NULL, approved_by TEXT, approved_at TEXT,
-  CHECK (status <> 'approved' OR (approved_by IS NOT NULL AND approved_at IS NOT NULL))
+  source TEXT NOT NULL DEFAULT 'manual',
+  quality_flags TEXT NOT NULL DEFAULT '[]',  -- JSON list; a master with open flags cannot be approved
+  CHECK (status <> 'approved' OR (approved_by IS NOT NULL AND approved_at IS NOT NULL)),
+  CHECK (status <> 'approved' OR quality_flags = '[]')
 );
 
 CREATE TABLE IF NOT EXISTS mapping (
@@ -115,8 +118,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 
 class SqliteRepository:
-    def __init__(self, path: str = ":memory:"):
-        self.conn = sqlite3.connect(path, isolation_level=None)
+    def __init__(self, path: str = ":memory:", four_eyes: bool = True, check_same_thread: bool = True):
+        self.four_eyes = four_eyes  # a master control cannot be approved by the person who created it
+        self.conn = sqlite3.connect(path, isolation_level=None, check_same_thread=check_same_thread)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
         self._depth = 0
@@ -210,19 +214,40 @@ class SqliteRepository:
             sql, args = sql + " WHERE status=?", (status,)
         return self.conn.execute(sql + " ORDER BY id", args).fetchall()
 
-    def add_master_control(self, mc: dict, actor: str):
+    def add_master_control(self, mc: dict, actor: str, flags=(), source: str = "manual"):
         """Insert as draft. Uniqueness of the canonical name is enforced by the schema."""
         key = master_canonical_key(mc["name"])
         with self.transaction():
             self.conn.execute(
                 "INSERT INTO master_control (id, canonical_key, name, objective, description, domain, frequency,"
-                " control_type, evidence, test_procedure, status, created_by, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " control_type, evidence, test_procedure, status, created_by, created_at, source, quality_flags)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (mc["id"], key, mc["name"], mc["objective"], mc["description"], mc["domain"], mc["frequency"],
-                 mc["control_type"], mc.get("evidence", ""), mc.get("test_procedure", ""), "draft", actor, _now()))
-            self.audit(actor, "master.create", "master_control", mc["id"], mc)
+                 mc["control_type"], mc.get("evidence", ""), mc.get("test_procedure", ""), "draft", actor, _now(),
+                 source, json.dumps(sorted(flags))))
+            self.audit(actor, "master.create", "master_control", mc["id"], {**mc, "source": source, "flags": sorted(flags)})
+
+    def update_master_draft(self, master_id: str, changes: dict, flags: list, actor: str):
+        """Edit a draft. ``flags`` is the full new flag list computed by the caller from the new values."""
+        allowed = {"objective", "description", "domain", "frequency", "control_type", "evidence", "test_procedure"}
+        if not changes or set(changes) - allowed:
+            raise ValueError(f"changes must be a non-empty subset of {sorted(allowed)}")
+        with self.transaction():
+            sets = ", ".join(f"{k}=?" for k in changes)
+            n = self.conn.execute(f"UPDATE master_control SET {sets}, quality_flags=? WHERE id=? AND status='draft'",
+                                  (*changes.values(), json.dumps(sorted(flags)), master_id)).rowcount
+            if n != 1:
+                raise ValueError(f"{master_id!r} is not a draft master control")
+            self.audit(actor, "master.update", "master_control", master_id, {"changes": changes, "flags": sorted(flags)})
 
     def approve_master_control(self, master_id: str, actor: str):
+        if not (actor and actor.strip()):
+            raise ValueError("an approver is required")
+        row = self.conn.execute("SELECT created_by, quality_flags FROM master_control WHERE id=?", (master_id,)).fetchone()
+        if row and json.loads(row["quality_flags"]):
+            raise ValueError(f"cannot approve while quality flags are open: {json.loads(row['quality_flags'])}")
+        if row and self.four_eyes and row["created_by"] == actor:
+            raise ValueError("four-eyes rule: a different person must approve this master control (use --solo to disable)")
         with self.transaction():
             n = self.conn.execute(
                 "UPDATE master_control SET status='approved', approved_by=?, approved_at=? WHERE id=? AND status='draft'",
@@ -259,11 +284,53 @@ class SqliteRepository:
             self.audit(reviewer, f"mapping.{decision}", "mapping", mapping_id,
                        {"relationship": relationship, "rationale": rationale, "primary": primary})
 
-    def open_suggestions(self):
+    def queue(self, query: str = "", limit: int = 25, offset: int = 0):
+        like = f"%{query.lower()}%"
+        return self.conn.execute(
+            "SELECT m.id, m.score, m.evidence, r.control_id, r.title, r.statement, c.id AS master_id, c.name AS master,"
+            " c.objective, c.description, c.domain, c.frequency, c.control_type"
+            " FROM mapping m JOIN source_requirement r ON r.id=m.requirement_id"
+            " JOIN master_control c ON c.id=m.master_control_id"
+            " WHERE m.status='suggested' AND c.status='approved' AND (?='%%' OR lower(r.control_id||' '||r.title||' '||c.name) LIKE ?)"
+            " ORDER BY (m.score IS NULL), m.score DESC, m.id LIMIT ? OFFSET ?", (like, like, limit, offset)).fetchall()
+
+    def unmapped(self, code: str, version: str, query: str = "", limit: int = 25, offset: int = 0):
+        like = f"%{query.lower()}%"
+        return self.conn.execute(
+            "SELECT r.id, r.control_id, r.title, r.statement FROM source_requirement r"
+            " WHERE r.framework_code=? AND r.framework_version=? AND r.status='active'"
+            " AND NOT EXISTS (SELECT 1 FROM mapping m WHERE m.requirement_id=r.id AND m.status='approved')"
+            " AND (?='%%' OR lower(r.control_id||' '||r.title||' '||r.statement) LIKE ?)"
+            " ORDER BY r.id LIMIT ? OFFSET ?", (code, version, like, like, limit, offset)).fetchall()
+
+    def map_requirement(self, code, version, control_id, master_id, reviewer, relationship, rationale, primary=False):
+        """Reviewer-initiated mapping (e.g. for requirements the suggester missed): suggest + decide atomically."""
+        with self.transaction():
+            row = self.conn.execute(
+                "SELECT id FROM source_requirement WHERE framework_code=? AND framework_version=? AND control_id=?",
+                (code, version, control_id)).fetchone()
+            if row is None:
+                raise ValueError(f"unknown requirement {control_id}")
+            self.suggest_mapping(row["id"], master_id, None, "manual")
+            m = self.conn.execute("SELECT id, status FROM mapping WHERE requirement_id=? AND master_control_id=?",
+                                  (row["id"], master_id)).fetchone()
+            if m["status"] != "suggested":
+                raise ValueError(f"this requirement/master pair is already {m['status']}")
+            self.decide_mapping(m["id"], "approved", reviewer, relationship, rationale, primary)
+
+    def open_suggestions(self, ready_only: bool = True):
+        """Suggestions a reviewer can act on now (their master control is approved) - or all of them."""
         return self.conn.execute(
             "SELECT m.id, r.control_id, r.title AS requirement, c.id AS master_id, c.name AS master, m.score, m.evidence"
             " FROM mapping m JOIN source_requirement r ON r.id=m.requirement_id"
-            " JOIN master_control c ON c.id=m.master_control_id WHERE m.status='suggested' ORDER BY m.score DESC, m.id").fetchall()
+            " JOIN master_control c ON c.id=m.master_control_id WHERE m.status='suggested'"
+            " AND (? = 0 OR c.status='approved') ORDER BY (m.score IS NULL), m.score DESC, m.id",
+            (int(ready_only),)).fetchall()
+
+    def blocked_suggestions(self) -> int:
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM mapping m JOIN master_control c ON c.id=m.master_control_id"
+            " WHERE m.status='suggested' AND c.status<>'approved'").fetchone()[0]
 
     def coverage(self, code, version):
         row = self.conn.execute(

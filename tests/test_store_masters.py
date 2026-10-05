@@ -92,7 +92,9 @@ class StoreRuleTests(unittest.TestCase):
                               "objective": "Something else entirely.", "description": "Not yet approved."})
         self.repo.suggest_mapping(requirement_id(self.repo, "AC-2"), draft, 0.4, "x")
         self.repo.suggest_mapping(requirement_id(self.repo, "AC-2(10)"), self.mid, 0.4, "x")
-        for row in self.repo.open_suggestions():
+        self.assertEqual(len(self.repo.open_suggestions()), 1)  # the draft master's suggestion is not reviewable yet
+        self.assertEqual(self.repo.blocked_suggestions(), 1)
+        for row in self.repo.open_suggestions(ready_only=False):
             with self.assertRaises(sqlite3.DatabaseError):
                 self.repo.decide_mapping(row["id"], "approved", "bob", "equivalent", "r")
 

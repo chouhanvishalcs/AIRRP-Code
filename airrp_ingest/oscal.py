@@ -48,9 +48,9 @@ def _render_param(pid: str, ctx: _Ctx, seen: tuple) -> str:
         ctx.issue(ERROR, "PARAM_CYCLE", f"parameter '{pid}' references itself")
         return "[?]"
     if param.label:
-        return f"[{normalize_text(_resolve(param.label, ctx, seen + (pid,)))}]"
+        return f"[{_resolve(param.label, ctx, seen + (pid,))}]"
     if param.choices:
-        return "[" + " | ".join(normalize_text(_resolve(c, ctx, seen + (pid,))) for c in param.choices) + "]"
+        return "[" + " | ".join(_resolve(c, ctx, seen + (pid,)) for c in param.choices) + "]"
     if param.aggregates:
         return " ".join(_render_param(a, ctx, seen + (pid,)) for a in param.aggregates)
     ctx.issue(ERROR, "EMPTY_PARAM", f"parameter '{pid}' has no label, choices or aggregates")
