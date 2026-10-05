@@ -59,39 +59,39 @@ Reproduce: `python -m airrp_ingest prove --catalog data/catalog.json --manifest 
 * caught: remove an active control's statement (IA-2) -> ['EMPTY_STATEMENT'] (16 controls quarantined, 1180 others still loadable)
 * caught: truncate the file at 50% -> JSONDecodeError, nothing partially parsed
 * caught: not a catalog at all -> ValueError, nothing partially parsed
-* (4.5s)
+* (4.7s)
 
 ### C4 · Output matches what your current system already produced for NIST SP 800-53 (all) - PASS
 
 * 1014 requirement payloads from your current system vs 1014 generated from the catalog; same code set: True
 * 1013 byte-identical, 1 differ only by leading/trailing whitespace (NIST-SP-800-53-SECURITY-AND-PRIVACY-CONTROLS-REQ-SA-4-7), 0 differ in content
-* (0.4s)
+* (0.6s)
 
 ### E1 · Only verified data is loaded, and the stored data equals the source (sqlite) - PASS
 
 * 1194 rows written = 1196 catalog controls - 2 quarantined; table holds 1194
 * independent verify (re-hash every stored row, compare to the source file): 0 problem(s)
-* content fingerprint of the stored set: fd2adeadcb5736e4…
-* (0.6s)
+* content fingerprint of the stored set: 5b90e0cf505c4c81…
+* (0.9s)
 
 ### E2 · Re-importing never creates duplicates (sqlite) - PASS
 
 * two more full imports added [0, 0] rows and recognised [1194, 1194] as unchanged
 * 1194 rows, 1194 distinct control ids (duplicates: 0)
-* (0.3s)
+* (0.4s)
 
 ### E3 · Concurrent imports of the same catalog cannot create duplicates (sqlite) - PASS
 
 * 4 importers started the same import at the same instant; rows added per importer: [1194, 0, 0, 0] (errors: none)
 * final table: 1194 rows, 1194 distinct ids; exactly one importer won, the others recognised the data as already stored
-* (1.3s)
+* (1.2s)
 
 ### E4 · Stored source data cannot be changed, and out-of-band edits are detected (sqlite) - PASS
 
 * rejected by the database: UPDATE source_requirement SET statement='x'
 * rejected by the database: DELETE FROM source_requirement
 * after someone with DDL rights disables the guard and edits AC-1, verify reports: ['AC-1: columns disagree with payload']
-* (0.4s)
+* (0.5s)
 
 ### E5 · Master controls cannot be duplicated (sqlite) - PASS
 
@@ -132,33 +132,33 @@ Reproduce: `python -m airrp_ingest prove --catalog data/catalog.json --manifest 
 * imported 122 masters as drafts and 977 mappings as suggestions; approved masters/mappings: 0/0
 * {'PLACEHOLDER_EVIDENCE': 111, 'PLACEHOLDER_TEST_PROCEDURE': 111, 'UNCONFIRMED_FREQUENCY': 111} quality flags raised; approval of 5 flagged drafts was refused 5/5 times
 * not imported, with reasons: 7 mappings skipped, 1 master error(s)
-* (0.3s)
+* (0.4s)
 
 ### E1 · Only verified data is loaded, and the stored data equals the source (postgres) - PASS
 
 * 1194 rows written = 1196 catalog controls - 2 quarantined; table holds 1194
 * independent verify (re-hash every stored row, compare to the source file): 0 problem(s)
-* content fingerprint of the stored set: fd2adeadcb5736e4…
+* content fingerprint of the stored set: 5b90e0cf505c4c81…
 * (1.4s)
 
 ### E2 · Re-importing never creates duplicates (postgres) - PASS
 
 * two more full imports added [0, 0] rows and recognised [1194, 1194] as unchanged
 * 1194 rows, 1194 distinct control ids (duplicates: 0)
-* (0.5s)
+* (0.4s)
 
 ### E3 · Concurrent imports of the same catalog cannot create duplicates (postgres) - PASS
 
 * 4 importers started the same import at the same instant; rows added per importer: [1194, 0, 0, 0] (errors: none)
 * final table: 1194 rows, 1194 distinct ids; exactly one importer won, the others recognised the data as already stored
-* (1.9s)
+* (1.8s)
 
 ### E4 · Stored source data cannot be changed, and out-of-band edits are detected (postgres) - PASS
 
 * rejected by the database: UPDATE source_requirement SET statement='x'
 * rejected by the database: DELETE FROM source_requirement
 * after someone with DDL rights disables the guard and edits AC-1, verify reports: ['AC-1: columns disagree with payload']
-* (0.4s)
+* (0.5s)
 
 ### E5 · Master controls cannot be duplicated (postgres) - PASS
 
@@ -191,7 +191,7 @@ Reproduce: `python -m airrp_ingest prove --catalog data/catalog.json --manifest 
 * altered bundle rejected: bundle_sha256 does not match the content (file altered or corrupted)
 * bundle with a dangling reference rejected and rolled back: mapping references unknown master control AIRRP-CTRL-DOESNOTEXIST (mappings before/after: 1/1)
 * bundle validates against schema/import-bundle.schema.json
-* (0.8s)
+* (1.0s)
 
 ### E8 · The existing workbook can be migrated without trusting any of it (postgres) - PASS
 
@@ -203,8 +203,8 @@ Reproduce: `python -m airrp_ingest prove --catalog data/catalog.json --manifest 
 
 ### X1 · Different storage engines end up with byte-identical source data (all) - PASS
 
-* sqlite: fd2adeadcb5736e48e4ae1cf…
-* postgres: fd2adeadcb5736e48e4ae1cf…
+* sqlite: 5b90e0cf505c4c81bcde6a1f…
+* postgres: 5b90e0cf505c4c81bcde6a1f…
 * identical content fingerprint across engines
 * (0.0s)
 

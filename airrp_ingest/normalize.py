@@ -80,5 +80,26 @@ def content_hash(control) -> str:
         "methods": [[m, normalize_text(o)] for m, o in control.assessment_methods],
         "links": sorted([l.rel, l.target, l.kind] for l in control.links),
         "level": control.implementation_level,
+        "clauses": [[c.ref, c.parent_ref, c.label, normalize_text(c.text), c.is_leaf] for c in control.clauses],
+    }
+    return sha256_hex(canonical_json(payload))
+
+
+def obligation_hash(control) -> str:
+    """Hash of what a mapping decision depends on: the obligation text, not commentary or cross-references.
+
+    A change to guidance, related-control links or assessment procedures does not change it, so those edits
+    never force a mapping to be re-reviewed; any change to title, statement or parameters does.
+    """
+    payload = {
+        "kind": control.kind,
+        "parent": control.parent_id,
+        "status": control.status,
+        "title": normalize_text(control.title),
+        "statement": normalize_text(control.statement),
+        "parameters": [
+            [p.id, normalize_text(p.label), [normalize_text(c) for c in p.choices], p.how_many, list(p.aggregates)]
+            for p in control.parameters
+        ],
     }
     return sha256_hex(canonical_json(payload))

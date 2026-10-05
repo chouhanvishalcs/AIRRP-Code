@@ -7,8 +7,8 @@ from dataclasses import dataclass, field, replace
 from typing import Optional
 
 from .curation import Curation, apply_overrides, waived
-from .model import ERROR, Issue, Link, Parameter, ParsedCatalog, SourceControl
-from .normalize import content_hash
+from .model import ERROR, Clause, Issue, Link, Parameter, ParsedCatalog, SourceControl
+from .normalize import content_hash, obligation_hash
 from .validate import validate
 
 
@@ -47,7 +47,7 @@ def build_plan(parsed: ParsedCatalog, repo, manifest: Optional[dict] = None,
     curation = curation or Curation()
     fw = parsed.framework
     controls, override_issues = apply_overrides(parsed.controls, curation, fw.version)
-    controls = [replace(c, content_hash=content_hash(c)) for c in controls]
+    controls = [replace(c, content_hash=content_hash(c), obligation_hash=obligation_hash(c)) for c in controls]
     plan = Plan(framework=fw)
 
     checked = ParsedCatalog(framework=fw, controls=controls, references=parsed.references, issues=parsed.issues)
@@ -131,6 +131,7 @@ def control_from_payload(payload: str) -> SourceControl:
                                       how_many=p["how_many"], aggregates=tuple(p["aggregates"]))
                             for p in d["parameters"])
     d["links"] = tuple(Link(**l) for l in d["links"])
+    d["clauses"] = tuple(Clause(**c) for c in d.get("clauses", []))
     d["assessment_methods"] = tuple(tuple(m) for m in d["assessment_methods"])
     d["overrides_applied"] = tuple(tuple(o) for o in d["overrides_applied"])
     return SourceControl(**d)

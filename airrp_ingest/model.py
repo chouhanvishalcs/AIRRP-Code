@@ -38,6 +38,17 @@ class Link:
 
 
 @dataclass(frozen=True)
+class Clause:
+    """A stable, addressable part of a source object (e.g. OSCAL part id ``ac-2_smt.k``)."""
+
+    ref: str
+    parent_ref: Optional[str]
+    label: str
+    text: str
+    is_leaf: bool
+
+
+@dataclass(frozen=True)
 class SourceControl:
     """One control or control enhancement exactly as published by the source framework."""
 
@@ -58,7 +69,9 @@ class SourceControl:
     links: tuple = ()
     implementation_level: Optional[str] = None
     source_ref: str = ""
-    content_hash: str = ""
+    content_hash: str = ""  # integrity: covers everything stored
+    obligation_hash: str = ""  # mapping-relevant content only (title, statement, parameters): drives carry-forward
+    clauses: tuple = ()
     overrides_applied: tuple = ()  # ((field, citation), ...)
 
 

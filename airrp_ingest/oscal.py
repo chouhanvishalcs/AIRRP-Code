@@ -9,7 +9,7 @@ import json
 import re
 from typing import Optional
 
-from .model import (ERROR, WARNING, FrameworkInfo, Issue, Link, ParsedCatalog, Parameter, Reference,
+from .model import (ERROR, WARNING, Clause, FrameworkInfo, Issue, Link, ParsedCatalog, Parameter, Reference,
                     SourceControl)
 from .normalize import (canonical_control_id, content_hash, normalize_text, oscal_id_to_canonical,
                         sha256_file)
@@ -72,6 +72,24 @@ def _render_parts(parts, ctx: _Ctx) -> list:
             lines.append(line)
         lines.extend(_render_parts(part.get("parts"), ctx))
     return lines
+
+
+def _clauses(statement_parts, ctx: _Ctx) -> tuple:
+    """Every addressable part of the statement, in document order, with its stable OSCAL part id."""
+    out = []
+
+    def walk(part, parent_ref):
+        ref = part.get("id") or f"{parent_ref}.{len(out)}"
+        label = _prop(part.get("props"), "label") or ""
+        text = _resolve(part.get("prose", ""), ctx).strip()
+        children = part.get("parts") or []
+        out.append(Clause(ref=ref, parent_ref=parent_ref, label=label, text=text, is_leaf=not children))
+        for child in children:
+            walk(child, ref)
+
+    for part in statement_parts or []:
+        walk(part, None)
+    return tuple(out)
 
 
 def _parse_param(p: dict) -> Parameter:
@@ -159,6 +177,7 @@ def load_catalog(path: str, framework_code: str = "NIST-SP-800-53") -> ParsedCat
         for part in ctl.get("parts", []):
             by_name.setdefault(part.get("name"), []).append(part)
         statement = "\n".join(_render_parts(by_name.get("statement"), ctx))
+        clauses = _clauses(by_name.get("statement"), ctx)
         guidance = "\n".join(_render_parts(by_name.get("guidance"), ctx))
         objectives = "\n".join(_render_parts(by_name.get("assessment-objective"), ctx))
         methods = tuple(
@@ -178,7 +197,7 @@ def load_catalog(path: str, framework_code: str = "NIST-SP-800-53") -> ParsedCat
             family=family, title=normalize_text(ctl.get("title", "")), status=status,
             statement=statement, guidance=guidance,
             parameters=tuple(_parse_param(p) for p in ctl.get("params", [])),
-            assessment_objectives=objectives, assessment_methods=methods, links=tuple(links),
+            assessment_objectives=objectives, assessment_methods=methods, links=tuple(links), clauses=clauses,
             implementation_level=_prop(props, "implementation-level"),
             source_ref=f"{framework.code}@{framework.version}#{ctl['id']}",
         )
