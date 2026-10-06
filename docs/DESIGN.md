@@ -15,8 +15,11 @@ Automation cannot be *proved* semantically right. It can be made incapable of si
 | Layer | What it holds | Who changes it |
 |---|---|---|
 | `source_requirement` | Verbatim control/enhancement records of one framework **version**, with a content hash | Only the importer; rows are immutable (triggers). A new publication is a new version = new rows |
+| `source_correction` | A person's corrections of text the source published wrongly: which published value (hash), what is wrong, the source of the right wording, who decided. Append-only revisions; see [CORRECTIONS.md](CORRECTIONS.md) | A person, through the curation file and an import; rows are append-only (triggers) |
 | `master_control` | Reusable, curated controls (`draft -> approved -> deprecated`), controlled vocabulary, deterministic unique key | People |
 | `mapping` | requirement <-> master control, `relationship` (NISTIR 8477: equivalent/subset/superset/intersects), one primary, rationale, reviewer | People; the tool only inserts `suggested` rows |
+
+`source_requirement` plus the corrections in force is the *effective* requirement (`requirement_effective` view); everything downstream reads that.
 
 Why separate them: the workbook mixed all three in one row, so a similarity score (a fixed 0.350 for 387 rows) ended up
 deciding facts about controls, 673 mappings pointed at unreviewed proposals, and requirements stayed `Approved` while mapped to nothing.
@@ -24,7 +27,7 @@ deciding facts about controls, 673 mappings pointed at unreviewed proposals, and
 ## Pipeline
 
 ```
-OSCAL JSON -> parse -> overrides -> validate/reconcile -> plan (diff) -> apply -> verify
+OSCAL JSON -> parse -> corrections (laid over, never stored into the mirror) -> validate/reconcile -> plan (diff) -> apply -> verify
                                           |                  |
                                   quarantine + review_item    one transaction, idempotent
 ```
@@ -47,14 +50,20 @@ Source files do contain mistakes. The real NIST 5.2.0 OSCAL catalog gives SA-15(
 statement text as SA-15(12) (PII minimisation). The importer quarantines both until a person decides:
 
 * **waiver**: the text is right as published; the issue stays on record.
-* **override**: replace `title`/`statement`/`guidance`, with a citation, reviewer, date and the hash of the source
-  value it was written against. If upstream later fixes the text the override becomes `OVERRIDE_STALE` (an error) instead of silently winning.
+* **correction**: the text is wrong; a person supplies the right wording from the official publication, with what is wrong,
+  a citation, a reviewer, a date and the hash of the published value it was written against. The published text stays
+  verbatim in `source_requirement`; the correction is recorded beside it and the two together are the effective text, which
+  is what validation, review, suggestions and export read. If the source later changes under a correction it becomes
+  `CORRECTION_STALE` (an error) instead of silently winning. Corrections are revised, never edited, and can be retired.
+  Full workflow, states and limits: [CORRECTIONS.md](CORRECTIONS.md).
 
-Both are scoped to one framework version.
+Both are scoped to one framework version. (Before the correction layer, an "override" replaced the text *before* it was
+stored, so the mirror held corrected text and the verbatim original was lost. That is why corrections now sit beside it.)
 
 ## Rules enforced by the schema (not by application code)
 
 * source rows cannot be updated or deleted; `(framework, version, control_id)` is unique
+* correction rows cannot be updated or deleted; each revision must directly follow the previous one; only a correction in force can be retired; a correction needs a reason, a citation, a reviewer and an existing source row
 * master control names are unique after case/punctuation normalisation (`&` = `and`)
 * mappings cannot be inserted as approved; approval needs reviewer + relationship + non-empty rationale
 * approved mappings need an *active* requirement and an *approved* master control

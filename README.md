@@ -50,12 +50,25 @@ python -m airrp_ingest --db airrp.db export --version 5.2.0 --format bundle --ou
 python -m airrp_ingest --db airrp.db export --version 5.2.0 --format requirements --out requirements.json
 ```
 
+### When the source itself is wrong
+
+The published text is never edited. A person records a correction beside it (what is wrong, the citation, who decided);
+the two together are what the system reads. Workflow, limits and the one correction this repository does *not* contain
+(the real SA-15(13) wording needs the official publication): [docs/CORRECTIONS.md](docs/CORRECTIONS.md).
+
+```bash
+python -m airrp_ingest --db airrp.db corrections show data/catalog.json --control "SA-15(13)"      # evidence from the catalog file
+python -m airrp_ingest corrections draft data/catalog.json --control "SA-15(13)" --out draft.json   # skeleton for a person to complete
+python -m airrp_ingest --db airrp.db corrections check data/catalog.json --curation curation/nist-sp-800-53.json
+python -m airrp_ingest --db airrp.db corrections list --version 5.2.0 --history
+```
+
 A master control cannot be approved by the person who created it (`--solo` disables this for one-person teams).
 
 ### Proof and storage engines
 
 ```bash
-# executable proof (21 claims) on SQLite and PostgreSQL; exit code 1 if any claim fails. Result of the last run: docs/PROOF.md
+# executable proof (22 claims with a workbook, 21 without) on SQLite and PostgreSQL; exit code 1 if any claim fails. Result of the last run: docs/PROOF.md
 pip install -r requirements-dev.txt
 python -m airrp_ingest prove --catalog data/catalog.json --manifest manifests/nist-sp-800-53-5.2.0.json \
     --curation curation/nist-sp-800-53.json --workbook Book1.xlsx --out PROOF.md

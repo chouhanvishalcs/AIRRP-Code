@@ -20,7 +20,8 @@ from dataclasses import dataclass, field
 from . import __version__
 from .airrp_export import airrp_requirement
 from .bundle import build_bundle
-from .curation import load_curation
+from .curation import Curation, field_hash, load_curation
+from .normalize import content_hash
 from .masters import DuplicateSuspect, create_master, master_id_for, update_master
 from .migrate import migrate_dry_or_apply, parse_legacy, read_rows
 from .oscal import load_catalog
@@ -215,6 +216,12 @@ def run_proof(catalog_path, manifest_path, curation_path=None, workbook=None, en
     meta = {"catalog": os.path.basename(catalog_path), "catalog_sha256": parsed.framework.source_sha256,
             "framework": f"{FW}@{parsed.framework.version}", "workbook": bool(workbook)}
 
+    def synthetic(cid, fld, value, **extra):
+        c = next(c for c in parsed.controls if c.control_id == cid)
+        return {"framework_version": parsed.framework.version, "control_id": cid, "field": fld, "value": value,
+                "source_value_sha256": field_hash(getattr(c, fld)), "problem": "SYNTHETIC: exercised by the proof only",
+                "citation": "SYNTHETIC: not NIST wording", "reviewer": "proof", "reviewed_at": "1970-01-01", **extra}
+
     print("independent of storage engine:")
     scratch = SqliteRepository(":memory:")
 
@@ -247,7 +254,7 @@ def run_proof(catalog_path, manifest_path, curation_path=None, workbook=None, en
         sample = by[ids[0]].statement[:90] if ids else ""
         return ids == ["SA-15(12)", "SA-15(13)"], [
             f"flagged: {ids}", f"both carry the sentence '{sample}…' although SA-15(13) is titled '{by['SA-15(13)'].title}'",
-            "both are held back from the repository until a person waives or overrides them with a citation"]
+            "both are held back from the repository until a person waives them, or corrects the wording with a citation (see E9)"]
     runner.run("C2", "A defect inside NIST's own file is detected instead of imported", "all", c2)
 
     def c3():
@@ -504,6 +511,42 @@ def run_proof(catalog_path, manifest_path, curation_path=None, workbook=None, en
                     f"{sum(report['master_flags'].values()) and report['master_flags']} quality flags raised; approval of 5 flagged drafts was refused {blocked_approvals}/5 times",
                     f"not imported, with reasons: {len(report['mappings_skipped'])} mappings skipped, {len(report['errors'])} master error(s)"]
             runner.run("E8", "The existing workbook can be migrated without trusting any of it", n, e8)
+
+        def e9():
+            r, _ = engine.new()
+            sa13 = synthetic("SA-15(13)", "statement", "SYNTHETIC TEST WORDING for [secure logging format(s)], [events types to log], [level of detail to log].")
+            ac1 = synthetic("AC-1", "title", "SYNTHETIC TITLE")
+            plan = build_plan(parsed, r, manifest, Curation(waivers=curation.waivers, corrections=[sa13, ac1]))
+            apply_plan(plan, r, "proof")
+            published = {c.control_id: c for c in parsed.controls}
+            mirror_ok = all(tuple(r.fetchone("SELECT statement, title FROM source_requirement WHERE control_id=?", (cid,)))
+                            == (published[cid].statement, published[cid].title) for cid in ("SA-15(13)", "AC-1"))
+            bundle = build_bundle(r, FW, parsed.framework.version)
+            differing = sorted(b["control_id"] for b in bundle["requirements"] if b["content_hash"] != content_hash(published[b["control_id"]]))
+            immutable = 0
+            for sql in ("UPDATE source_correction SET value='x'", "DELETE FROM source_correction"):
+                try:
+                    r.execute(sql)
+                except r.DatabaseError:
+                    immutable += 1
+            retired = build_plan(parsed, r, manifest, Curation(waivers=curation.waivers, corrections=[sa13, {**ac1, "retired": {
+                "reviewer": "proof", "reviewed_at": "1970-01-02", "reason": "SYNTHETIC: exercised by the proof only"}}]))
+            apply_plan(retired, r, "proof")
+            title_back = r.fetchone("SELECT title, corrected FROM requirement_effective WHERE control_id='AC-1'")
+            history = [(h["revision"], h["action"]) for h in r.correction_history(FW, parsed.framework.version, "AC-1")]
+            problems = verify_repository(r, parsed, Curation(waivers=curation.waivers, corrections=[sa13, {**ac1, "retired": {
+                "reviewer": "proof", "reviewed_at": "1970-01-02", "reason": "x"}}]))
+            ok = (not plan.quarantined and mirror_ok and differing == ["AC-1", "SA-15(13)"] and immutable == 2
+                  and tuple(title_back) == (published["AC-1"].title, 0) and history == [(1, "set"), (2, "retire")] and not problems)
+            return ok, [
+                "SYNTHETIC wording on two controls, to exercise the mechanism; this proves behaviour, it records no NIST text",
+                f"with a correction on SA-15(13) the duplicate pair is released: {len(plan.quarantined)} controls held back, {plan.added} rows written",
+                f"the stored source text of both corrected controls still equals the published text: {mirror_ok}",
+                f"requirements whose exported hash differs from the published hash: {differing} (every other requirement is unchanged)",
+                f"UPDATE / DELETE on the correction record rejected by the database: {immutable}/2",
+                f"retiring the AC-1 correction: published title back in force, revision history {history}",
+                f"independent verify after all of that: {len(problems)} problem(s)"]
+        runner.run("E9", "A correction sits over the published text without touching it, and can be withdrawn", n, e9)
 
     if len(base_fp) > 1:
         def x1():

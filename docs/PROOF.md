@@ -214,3 +214,31 @@ Proven here, by running the real code on the real catalog: extraction is complet
 
 Not provable by software: that NIST's published text is itself correct (C2 shows one place where it is not), and that a reviewer's judgement about which master control implements a requirement is right. Those stay with people; the tool's job is to make every such decision explicit, attributable and irreversible-by-accident.
 
+## Addendum: source corrections (claim E9)
+
+Added with the correction layer ([CORRECTIONS.md](CORRECTIONS.md)). The run above predates it and was **not** regenerated:
+it needs the existing workbook (`Book1.xlsx`, claims C4 and E8), which was not available when the layer was built. Instead,
+the whole proof was re-run on the current code without the workbook. Result of that run: 20 passed, 0 failed, 1 skipped.
+The one skipped claim is C4 (the workbook comparison); E8 (the workbook migration) is not run without it. C1-C3, E1-E7, E9 and X1 pass on SQLite and PostgreSQL.
+All correction wording below is synthetic: it exercises the mechanism and records no NIST text.
+
+### E9 · A correction sits over the published text without touching it, and can be withdrawn (sqlite) - PASS
+
+* SYNTHETIC wording on two controls, to exercise the mechanism; this proves behaviour, it records no NIST text
+* with a correction on SA-15(13) the duplicate pair is released: 0 controls held back, 1196 rows written
+* the stored source text of both corrected controls still equals the published text: True
+* requirements whose exported hash differs from the published hash: ['AC-1', 'SA-15(13)'] (every other requirement is unchanged)
+* UPDATE / DELETE on the correction record rejected by the database: 2/2
+* retiring the AC-1 correction: published title back in force, revision history [(1, 'set'), (2, 'retire')]
+* independent verify after all of that: 0 problem(s)
+
+### E9 · A correction sits over the published text without touching it, and can be withdrawn (postgres) - PASS
+
+* SYNTHETIC wording on two controls, to exercise the mechanism; this proves behaviour, it records no NIST text
+* with a correction on SA-15(13) the duplicate pair is released: 0 controls held back, 1196 rows written
+* the stored source text of both corrected controls still equals the published text: True
+* requirements whose exported hash differs from the published hash: ['AC-1', 'SA-15(13)'] (every other requirement is unchanged)
+* UPDATE / DELETE on the correction record rejected by the database: 2/2
+* retiring the AC-1 correction: published title back in force, revision history [(1, 'set'), (2, 'retire')]
+* independent verify after all of that: 0 problem(s)
+

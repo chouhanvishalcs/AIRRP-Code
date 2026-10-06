@@ -115,28 +115,39 @@ class CurationTests:
         with self.assertRaises(ValueError):
             load_curation(curation_file(waivers=[{"control_id": "SA-15(12)", "code": "DUPLICATE_STATEMENT"}]))
 
-    def test_override_replaces_text_and_is_recorded(self):
-        o = dict(framework_version="5.2.0", control_id="SA-15(13)", field="statement",
-                 value="Require the developer to use a defined secure logging format.",
-                 source_value_sha256=field_hash(DUP_TEXT), citation="NIST SP 800-53 Rev 5.2.0 p.X",
-                 reviewer="a.reviewer", reviewed_at="2026-10-05")
-        plan = self.plan(curation_file(overrides=[o]))
+    def entry(self, **kw):
+        return dict(framework_version="5.2.0", control_id="SA-15(13)", field="statement",
+                    value="Require the developer to use a defined secure logging format.",
+                    source_value_sha256=field_hash(DUP_TEXT), problem="the published text repeats SA-15(12)",
+                    citation="NIST SP 800-53 Rev 5.2.0 p.X", reviewer="a.reviewer", reviewed_at="2026-10-05", **kw)
+
+    def test_correction_unblocks_the_control_and_leaves_the_source_verbatim(self):
+        plan = self.plan(curation_file(corrections=[self.entry()]))
         self.assertEqual(plan.quarantined, {})
         added = {c.control_id: c for c in plan.to_add}
-        self.assertEqual(added["SA-15(13)"].overrides_applied, (("statement", "NIST SP 800-53 Rev 5.2.0 p.X"),))
+        self.assertEqual(added["SA-15(13)"].statement, DUP_TEXT)  # what is stored is what was published
+        self.assertEqual(added["SA-15(13)"].overrides_applied, ())
+        self.assertEqual([(x.control_id, x.field, x.revision) for x in plan.corrections], [("SA-15(13)", "statement", 1)])
         self.assertEqual(added["SA-15(12)"].statement, DUP_TEXT)  # untouched
 
-    def test_stale_override_fails_loudly(self):
-        o = dict(framework_version="5.2.0", control_id="SA-15(13)", field="statement", value="new text",
-                 source_value_sha256="0" * 64, citation="c", reviewer="r", reviewed_at="2026-10-05")
-        plan = self.plan(curation_file(overrides=[o]))
-        self.assertIn("OVERRIDE_STALE", [i.code for v in plan.quarantined.values() for i in v])
+    def test_the_old_overrides_key_still_loads(self):
+        plan = self.plan(curation_file(overrides=[self.entry()]))
+        self.assertEqual(plan.quarantined, {})
 
-    def test_only_text_fields_can_be_overridden(self):
-        o = dict(framework_version="5.2.0", control_id="AC-1", field="control_id", value="AC-9",
-                 source_value_sha256="0" * 64, citation="c", reviewer="r", reviewed_at="d")
+    def test_a_correction_must_say_what_is_wrong(self):
+        e = self.entry()
+        del e["problem"]
         with self.assertRaises(ValueError):
-            load_curation(curation_file(overrides=[o]))
+            load_curation(curation_file(corrections=[e]))
+
+    def test_stale_correction_fails_loudly(self):
+        plan = self.plan(curation_file(corrections=[{**self.entry(), "source_value_sha256": "0" * 64}]))
+        self.assertIn("CORRECTION_STALE", [i.code for v in plan.quarantined.values() for i in v])
+
+    def test_only_text_fields_can_be_corrected(self):
+        o = {**self.entry(), "control_id": "AC-1", "field": "control_id", "value": "AC-9"}
+        with self.assertRaises(ValueError):
+            load_curation(curation_file(corrections=[o]))
 
 
 for_each_engine(PipelineTests)

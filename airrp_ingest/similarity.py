@@ -61,7 +61,7 @@ def suggest(repo, framework_code: str, version: str, min_score: float = 0.25, to
     scorer = scorer_factory({m["id"]: f"{m['name']} {m['objective']} {m['description']}" for m in masters})
     created = 0
     with repo.transaction():
-        for r in repo.requirements(framework_code, version, "active"):
+        for r in repo.requirements_effective(framework_code, version, "active"):
             already = repo.execute(
                 "SELECT 1 FROM mapping WHERE requirement_id=? AND status='approved'", (r["id"],)).fetchone()
             if already:

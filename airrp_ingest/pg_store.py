@@ -5,7 +5,7 @@ Invariants are enforced by the database: constraints, partial unique indexes and
 """
 from __future__ import annotations
 
-from .store import Row, SqlRepository
+from .store import CORRECTION_VIEWS, Row, SqlRepository
 
 try:
     import psycopg
@@ -50,6 +50,67 @@ DO $$ BEGIN
                  AND tgrelid = 'source_requirement'::regclass) THEN
     CREATE TRIGGER source_requirement_no_truncate BEFORE TRUNCATE ON source_requirement
       FOR EACH STATEMENT EXECUTE FUNCTION airrp_immutable();
+  END IF;
+END $$;
+
+-- A person's corrections of text the source published wrongly. Append-only: a changed correction is a new revision,
+-- a withdrawn one is a 'retire' row. It never edits source_requirement; the pair is read through requirement_effective.
+CREATE TABLE IF NOT EXISTS source_correction (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  framework_code TEXT NOT NULL, framework_version TEXT NOT NULL, control_id TEXT NOT NULL,
+  field TEXT NOT NULL CHECK (field IN ('title','statement','guidance')),
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  action TEXT NOT NULL CHECK (action IN ('set','retire')),
+  value TEXT NOT NULL,
+  source_value_sha256 TEXT NOT NULL CHECK (length(source_value_sha256) = 64),
+  problem TEXT NOT NULL CHECK (length(trim(problem)) > 0),
+  citation TEXT NOT NULL DEFAULT '',
+  reviewer TEXT NOT NULL CHECK (length(trim(reviewer)) > 0),
+  reviewed_at TEXT NOT NULL CHECK (length(trim(reviewed_at)) > 0),
+  recorded_at TEXT NOT NULL, import_run_id BIGINT NOT NULL REFERENCES import_run(id),
+  CHECK (action = 'retire' OR (length(trim(value)) > 0 AND length(trim(citation)) > 0)),
+  CHECK (action = 'set' OR value = ''),
+  UNIQUE (framework_code, framework_version, control_id, field, revision),
+  FOREIGN KEY (framework_code, framework_version, control_id)
+    REFERENCES source_requirement(framework_code, framework_version, control_id)
+);
+
+CREATE OR REPLACE FUNCTION airrp_append_only() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RAISE EXCEPTION 'source_correction is append-only'; END $$;
+CREATE OR REPLACE FUNCTION airrp_correction_chain() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE last_revision INTEGER; last_action TEXT;
+BEGIN
+  SELECT COALESCE(MAX(revision), 0) INTO last_revision FROM source_correction
+   WHERE framework_code = NEW.framework_code AND framework_version = NEW.framework_version
+     AND control_id = NEW.control_id AND field = NEW.field;
+  IF NEW.revision <> last_revision + 1 THEN
+    RAISE EXCEPTION 'a correction revision must directly follow the previous one';
+  END IF;
+  IF NEW.action = 'retire' THEN
+    SELECT action INTO last_action FROM source_correction
+     WHERE framework_code = NEW.framework_code AND framework_version = NEW.framework_version
+       AND control_id = NEW.control_id AND field = NEW.field AND revision = NEW.revision - 1;
+    IF last_action IS DISTINCT FROM 'set' THEN
+      RAISE EXCEPTION 'only a correction that is in force can be retired';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'source_correction_append_only'
+                 AND tgrelid = 'source_correction'::regclass) THEN
+    CREATE TRIGGER source_correction_append_only BEFORE UPDATE OR DELETE ON source_correction
+      FOR EACH ROW EXECUTE FUNCTION airrp_append_only();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'source_correction_no_truncate'
+                 AND tgrelid = 'source_correction'::regclass) THEN
+    CREATE TRIGGER source_correction_no_truncate BEFORE TRUNCATE ON source_correction
+      FOR EACH STATEMENT EXECUTE FUNCTION airrp_append_only();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'source_correction_chain'
+                 AND tgrelid = 'source_correction'::regclass) THEN
+    CREATE TRIGGER source_correction_chain BEFORE INSERT ON source_correction
+      FOR EACH ROW EXECUTE FUNCTION airrp_correction_chain();
   END IF;
 END $$;
 
@@ -112,6 +173,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 """
 
+PG_SCHEMA += "".join(f"CREATE OR REPLACE VIEW {n} AS {b};\n" for n, b in CORRECTION_VIEWS)
+
 
 def _row_factory(cursor):
     cols = [d.name for d in cursor.description] if cursor.description else []
@@ -158,6 +221,10 @@ class PostgresRepository(SqlRepository):
         except Exception:
             pass
 
-    def _simulate_out_of_band_tampering(self):
+    def _simulate_out_of_band_tampering(self, what="mirror"):
         """Test hook: what someone with DDL rights could do. The pipeline must still detect the damage."""
-        self.execute("ALTER TABLE source_requirement DISABLE TRIGGER source_requirement_immutable")
+        if what == "corrections":
+            self.execute("ALTER TABLE source_correction DISABLE TRIGGER source_correction_append_only")
+            self.execute("ALTER TABLE source_correction DISABLE TRIGGER source_correction_chain")
+        else:
+            self.execute("ALTER TABLE source_requirement DISABLE TRIGGER source_requirement_immutable")

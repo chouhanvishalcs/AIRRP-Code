@@ -14,7 +14,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Protocol
 
-from .model import FrameworkInfo, SourceControl
+from .model import Correction, FrameworkInfo, SourceControl
 from .normalize import canonical_json, master_canonical_key
 
 RELATIONSHIPS = ("equivalent", "subset", "superset", "intersects")  # NISTIR 8477 set-theory relationships
@@ -27,6 +27,9 @@ class Repository(Protocol):
     def requirement_hashes(self, code: str, version: str) -> dict: ...
     def add_framework(self, fw: FrameworkInfo) -> None: ...
     def add_requirement(self, c: SourceControl, run_id: int) -> None: ...
+    def latest_corrections(self, code: str, version: str) -> dict: ...
+    def correction_revision(self, code: str, version: str, control_id: str, field: str) -> int: ...
+    def add_correction(self, x: Correction, run_id: int) -> None: ...
     def sync_review_items(self, run_id: int, code: str, version: str, items: list) -> None: ...
     def start_run(self, **kw) -> int: ...
     def finish_run(self, run_id: int, summary: dict) -> None: ...
@@ -68,6 +71,43 @@ CREATE TRIGGER IF NOT EXISTS source_requirement_no_update BEFORE UPDATE ON sourc
   BEGIN SELECT RAISE(ABORT, 'source_requirement is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS source_requirement_no_delete BEFORE DELETE ON source_requirement
   BEGIN SELECT RAISE(ABORT, 'source_requirement is immutable'); END;
+
+-- A person's corrections of text the source published wrongly. Append-only: a changed correction is a new revision,
+-- a withdrawn one is a 'retire' row. It never edits source_requirement; the pair is read through requirement_effective.
+CREATE TABLE IF NOT EXISTS source_correction (
+  id INTEGER PRIMARY KEY,
+  framework_code TEXT NOT NULL, framework_version TEXT NOT NULL, control_id TEXT NOT NULL,
+  field TEXT NOT NULL CHECK (field IN ('title','statement','guidance')),
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  action TEXT NOT NULL CHECK (action IN ('set','retire')),
+  value TEXT NOT NULL,
+  source_value_sha256 TEXT NOT NULL CHECK (length(source_value_sha256) = 64),
+  problem TEXT NOT NULL CHECK (length(trim(problem)) > 0),
+  citation TEXT NOT NULL DEFAULT '',
+  reviewer TEXT NOT NULL CHECK (length(trim(reviewer)) > 0),
+  reviewed_at TEXT NOT NULL CHECK (length(trim(reviewed_at)) > 0),
+  recorded_at TEXT NOT NULL, import_run_id INTEGER NOT NULL REFERENCES import_run(id),
+  CHECK (action = 'retire' OR (length(trim(value)) > 0 AND length(trim(citation)) > 0)),
+  CHECK (action = 'set' OR value = ''),
+  UNIQUE (framework_code, framework_version, control_id, field, revision),
+  FOREIGN KEY (framework_code, framework_version, control_id)
+    REFERENCES source_requirement(framework_code, framework_version, control_id)
+);
+CREATE TRIGGER IF NOT EXISTS source_correction_no_update BEFORE UPDATE ON source_correction
+  BEGIN SELECT RAISE(ABORT, 'source_correction is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS source_correction_no_delete BEFORE DELETE ON source_correction
+  BEGIN SELECT RAISE(ABORT, 'source_correction is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS source_correction_chain BEFORE INSERT ON source_correction
+  BEGIN
+    SELECT RAISE(ABORT, 'a correction revision must directly follow the previous one')
+      WHERE NEW.revision <> COALESCE((SELECT MAX(p.revision) FROM source_correction p
+        WHERE p.framework_code = NEW.framework_code AND p.framework_version = NEW.framework_version
+          AND p.control_id = NEW.control_id AND p.field = NEW.field), 0) + 1;
+    SELECT RAISE(ABORT, 'only a correction that is in force can be retired')
+      WHERE NEW.action = 'retire' AND COALESCE((SELECT p.action FROM source_correction p
+        WHERE p.framework_code = NEW.framework_code AND p.framework_version = NEW.framework_version
+          AND p.control_id = NEW.control_id AND p.field = NEW.field AND p.revision = NEW.revision - 1), 'retire') <> 'set';
+  END;
 
 CREATE TABLE IF NOT EXISTS master_control (
   id TEXT PRIMARY KEY, canonical_key TEXT NOT NULL UNIQUE, name TEXT NOT NULL CHECK (length(trim(name)) > 0),
@@ -117,6 +157,32 @@ CREATE TABLE IF NOT EXISTS audit_log (
   entity TEXT NOT NULL, entity_id TEXT NOT NULL, detail_json TEXT NOT NULL
 );
 """
+
+
+# The corrections in force, and the requirements as the rest of the system reads them (published text with the
+# corrections in force laid over it). Written once in portable SQL; each dialect only supplies CREATE VIEW's spelling.
+CORRECTION_VIEWS = (
+    ("correction_current",
+     "SELECT c.id, c.framework_code, c.framework_version, c.control_id, c.field, c.revision, c.value,"
+     " c.source_value_sha256, c.problem, c.citation, c.reviewer, c.reviewed_at, c.recorded_at, c.import_run_id"
+     " FROM source_correction c WHERE c.action = 'set' AND c.revision = ("
+     "SELECT MAX(l.revision) FROM source_correction l WHERE l.framework_code = c.framework_code"
+     " AND l.framework_version = c.framework_version AND l.control_id = c.control_id AND l.field = c.field)"),
+    ("requirement_effective",
+     "SELECT r.id, r.framework_code, r.framework_version, r.control_id, r.oscal_id, r.parent_id, r.kind, r.family,"
+     " COALESCE(t.value, r.title) AS title, r.status, COALESCE(s.value, r.statement) AS statement,"
+     " COALESCE(g.value, r.guidance) AS guidance, r.payload_json, r.content_hash AS source_content_hash,"
+     " r.import_run_id, CASE WHEN t.id IS NULL AND s.id IS NULL AND g.id IS NULL THEN 0 ELSE 1 END AS corrected"
+     " FROM source_requirement r"
+     " LEFT JOIN correction_current t ON t.framework_code = r.framework_code AND t.framework_version = r.framework_version"
+     " AND t.control_id = r.control_id AND t.field = 'title'"
+     " LEFT JOIN correction_current s ON s.framework_code = r.framework_code AND s.framework_version = r.framework_version"
+     " AND s.control_id = r.control_id AND s.field = 'statement'"
+     " LEFT JOIN correction_current g ON g.framework_code = r.framework_code AND g.framework_version = r.framework_version"
+     " AND g.control_id = r.control_id AND g.field = 'guidance'"),
+)
+
+SQLITE_SCHEMA += "".join(f"CREATE VIEW IF NOT EXISTS {n} AS {b};\n" for n, b in CORRECTION_VIEWS)
 
 
 class Row(dict):
@@ -197,7 +263,11 @@ class SqlRepository:
             (fw.code, fw.version, fw.title, fw.oscal_version, fw.last_modified, fw.source_sha256, _now()))
 
     def add_requirement(self, c, run_id):
+        if c.overrides_applied or c.corrections:  # the mirror holds the published text, never a corrected control
+            raise ValueError(f"{c.control_id}: a corrected control cannot be stored as source text; "
+                             "record the correction with add_correction and store the published control")
         payload = asdict(c)
+        del payload["corrections"]  # keeps the stored payload exactly as it was before the correction layer existed
         self.execute(
             "INSERT INTO source_requirement (framework_code, framework_version, control_id, oscal_id, parent_id, kind,"
             " family, title, status, statement, guidance, payload_json, content_hash, import_run_id)"
@@ -239,6 +309,59 @@ class SqlRepository:
         return self.execute(
             "SELECT * FROM source_requirement WHERE framework_code=? AND framework_version=? AND status=? ORDER BY id",
             (code, version, status)).fetchall()
+
+    def requirements_effective(self, code, version, status="active"):
+        """The requirements as everything downstream reads them: published text with corrections in force laid over it.
+        ``source_content_hash`` is the hash of the published text; ``corrected`` says whether anything was laid over it."""
+        return self.execute(
+            "SELECT * FROM requirement_effective WHERE framework_code=? AND framework_version=? AND status=? ORDER BY id",
+            (code, version, status)).fetchall()
+
+    # -- corrections -------------------------------------------------------------------------------
+    @staticmethod
+    def _correction(row) -> Correction:
+        return Correction(framework_code=row["framework_code"], framework_version=row["framework_version"],
+                          control_id=row["control_id"], field=row["field"],
+                          value=row["value"], source_value_sha256=row["source_value_sha256"], problem=row["problem"],
+                          citation=row["citation"], reviewer=row["reviewer"], reviewed_at=row["reviewed_at"],
+                          revision=int(row["revision"]), action=row["action"])
+
+    def correction_history(self, code, version, control_id=None) -> list:
+        """Every revision ever recorded, oldest first (what was decided, by whom, and when it was recorded)."""
+        sql = ("SELECT * FROM source_correction WHERE framework_code=? AND framework_version=?"
+               + (" AND control_id=?" if control_id else "") + " ORDER BY control_id, field, revision")
+        return [dict(r) for r in self.execute(sql, (code, version, *([control_id] if control_id else []))).fetchall()]
+
+    def latest_corrections(self, code, version) -> dict:
+        """{(control_id, field): the latest revision} - a 'retire' row counts: it is the latest word on that field."""
+        out = {}
+        for row in self.correction_history(code, version):  # ordered by revision, so the last row per key wins
+            out[(row["control_id"], row["field"])] = self._correction(row)
+        return out
+
+    def current_corrections(self, code, version) -> dict:
+        """{control_id: [Correction in force]} - what the effective controls are built from."""
+        out = {}
+        for (cid, _), x in self.latest_corrections(code, version).items():
+            if x.action == "set":
+                out.setdefault(cid, []).append(x)
+        return out
+
+    def correction_revision(self, code, version, control_id, field) -> int:
+        row = self.execute(
+            "SELECT MAX(revision) FROM source_correction WHERE framework_code=? AND framework_version=?"
+            " AND control_id=? AND field=?", (code, version, control_id, field)).fetchone()
+        return int(row[0] or 0)
+
+    def add_correction(self, x, run_id):
+        """Append one revision. The schema, not this method, enforces that it follows the previous one."""
+        self.execute(
+            "INSERT INTO source_correction (framework_code, framework_version, control_id, field, revision, action, value,"
+            " source_value_sha256, problem, citation, reviewer, reviewed_at, recorded_at, import_run_id)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (x.framework_code, x.framework_version, x.control_id, x.field,
+             x.revision, x.action, x.value, x.source_value_sha256, x.problem, x.citation, x.reviewer, x.reviewed_at,
+             _now(), run_id))
 
     # -- master layer ------------------------------------------------------------------------------
     def master_controls(self, status=None):
@@ -320,9 +443,9 @@ class SqlRepository:
     def queue(self, query: str = "", limit: int = 25, offset: int = 0):
         like = f"%{query.lower()}%"
         return self.execute(
-            "SELECT m.id, m.score, m.evidence, r.control_id, r.title, r.statement, c.id AS master_id, c.name AS master,"
-            " c.objective, c.description, c.domain, c.frequency, c.control_type"
-            " FROM mapping m JOIN source_requirement r ON r.id=m.requirement_id"
+            "SELECT m.id, m.score, m.evidence, r.control_id, r.title, r.statement, r.corrected, c.id AS master_id,"
+            " c.name AS master, c.objective, c.description, c.domain, c.frequency, c.control_type"
+            " FROM mapping m JOIN requirement_effective r ON r.id=m.requirement_id"
             " JOIN master_control c ON c.id=m.master_control_id"
             " WHERE m.status='suggested' AND c.status='approved' AND (? = 1 OR lower(r.control_id||' '||r.title||' '||c.name) LIKE ?)"
             " ORDER BY (m.score IS NULL), m.score DESC, m.id LIMIT ? OFFSET ?", (int(not query), like, limit, offset)).fetchall()
@@ -330,7 +453,7 @@ class SqlRepository:
     def unmapped(self, code: str, version: str, query: str = "", limit: int = 25, offset: int = 0):
         like = f"%{query.lower()}%"
         return self.execute(
-            "SELECT r.id, r.control_id, r.title, r.statement FROM source_requirement r"
+            "SELECT r.id, r.control_id, r.title, r.statement, r.corrected FROM requirement_effective r"
             " WHERE r.framework_code=? AND r.framework_version=? AND r.status='active'"
             " AND NOT EXISTS (SELECT 1 FROM mapping m WHERE m.requirement_id=r.id AND m.status='approved')"
             " AND (? = 1 OR lower(r.control_id||' '||r.title||' '||r.statement) LIKE ?)"
@@ -355,7 +478,7 @@ class SqlRepository:
         """Suggestions a reviewer can act on now (their master control is approved) - or all of them."""
         return self.execute(
             "SELECT m.id, r.control_id, r.title AS requirement, c.id AS master_id, c.name AS master, m.score, m.evidence"
-            " FROM mapping m JOIN source_requirement r ON r.id=m.requirement_id"
+            " FROM mapping m JOIN requirement_effective r ON r.id=m.requirement_id"
             " JOIN master_control c ON c.id=m.master_control_id WHERE m.status='suggested'"
             " AND (? = 0 OR c.status='approved') ORDER BY (m.score IS NULL), m.score DESC, m.id",
             (int(ready_only),)).fetchall()
@@ -391,9 +514,13 @@ class SqliteRepository(SqlRepository):
     def close(self):
         self.conn.close()
 
-    def _simulate_out_of_band_tampering(self):
+    def _simulate_out_of_band_tampering(self, what="mirror"):
         """Test hook: what someone with DDL rights could do. The pipeline must still detect the damage."""
-        self.execute("DROP TRIGGER source_requirement_no_update")
+        if what == "corrections":
+            self.execute("DROP TRIGGER source_correction_no_update")
+            self.execute("DROP TRIGGER source_correction_chain")
+        else:
+            self.execute("DROP TRIGGER source_requirement_no_update")
 
 
 def open_repository(spec: str, four_eyes: bool = True, **kw):

@@ -72,7 +72,30 @@ class SourceControl:
     content_hash: str = ""  # integrity: covers everything stored
     obligation_hash: str = ""  # mapping-relevant content only (title, statement, parameters): drives carry-forward
     clauses: tuple = ()
-    overrides_applied: tuple = ()  # ((field, citation), ...)
+    overrides_applied: tuple = ()  # ((field, citation), ...): set only on an *effective* control, never on a stored mirror row
+    corrections: tuple = ()  # the Correction records behind overrides_applied (effective controls only)
+
+
+@dataclass(frozen=True)
+class Correction:
+    """A person's correction of one text field of one source control.
+
+    It is written against a specific published value (``source_value_sha256``) and never edits that value: the source
+    stays verbatim, the correction sits over it, and the pair is what the rest of the system reads as the control.
+    """
+
+    framework_code: str
+    framework_version: str
+    control_id: str
+    field: str  # "title" | "statement" | "guidance"
+    value: str  # the corrected text
+    source_value_sha256: str  # hash of the published value this was written against
+    problem: str  # what is wrong with the published value (for a retirement: why the correction is withdrawn)
+    citation: str  # where the right wording comes from
+    reviewer: str  # the person who decided
+    reviewed_at: str
+    revision: int = 1  # assigned when the correction is recorded
+    action: str = "set"  # "set" = this value is in force; "retire" = withdrawn, the published value is in force again
 
 
 @dataclass(frozen=True)

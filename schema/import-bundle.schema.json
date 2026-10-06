@@ -34,6 +34,17 @@
       "required": ["id", "name", "objective", "description", "domain", "frequency", "control_type", "evidence",
                    "test_procedure", "approved_by", "approved_at"],
       "properties": {"id": {"type": "string", "minLength": 1}, "name": {"type": "string", "minLength": 1}, "objective": {"type": "string", "minLength": 1}, "description": {"type": "string", "minLength": 1}, "domain": {"type": "string", "minLength": 1}, "frequency": {"type": "string", "minLength": 1}, "control_type": {"type": "string", "minLength": 1}, "evidence": {"type": "string", "minLength": 1}, "test_procedure": {"type": "string", "minLength": 1}, "approved_by": {"type": "string", "minLength": 1}, "approved_at": {"type": "string", "minLength": 1}}}},
+    "corrections": {"type": "array", "minItems": 1, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requirement_code", "control_id", "field", "revision", "published_value", "value",
+                   "published_value_sha256", "problem", "citation", "reviewer", "reviewed_at"],
+      "properties": {
+        "requirement_code": {"type": "string", "minLength": 1}, "control_id": {"type": "string", "minLength": 1},
+        "field": {"enum": ["title", "statement", "guidance"]}, "revision": {"type": "integer", "minimum": 1},
+        "published_value": {"type": "string"}, "value": {"type": "string", "minLength": 1},
+        "published_value_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "problem": {"type": "string", "minLength": 1}, "citation": {"type": "string", "minLength": 1},
+        "reviewer": {"type": "string", "minLength": 1}, "reviewed_at": {"type": "string", "minLength": 1}}}},
     "mappings": {"type": "array", "items": {
       "type": "object", "additionalProperties": false,
       "required": ["requirement_code", "requirement_control_id", "master_control_id", "relationship", "is_primary",

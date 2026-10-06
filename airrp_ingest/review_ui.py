@@ -77,7 +77,14 @@ class _Handler(BaseHTTPRequestHandler):
                 "framework": f"{fw[0]}@{fw[1]}", **repo.coverage(*fw),
                 "open_suggestions": len(repo.open_suggestions()), "waiting_on_master_approval": repo.blocked_suggestions(),
                 "masters": {r[0]: int(r[1]) for r in repo.fetchall("SELECT status, COUNT(*) FROM master_control GROUP BY 1")},
+                "corrected_requirements": int(repo.fetchone(
+                    "SELECT COUNT(*) FROM requirement_effective WHERE framework_code=? AND framework_version=?"
+                    " AND status='active' AND corrected=1", fw)[0]),
                 "open_review_items": int(repo.fetchone("SELECT COUNT(*) FROM review_item WHERE status='open'")[0])})
+        if url.path == "/api/corrections":
+            return self._send(200, _rows(repo.fetchall(
+                "SELECT control_id, field, revision, problem, citation, reviewer, reviewed_at FROM correction_current"
+                " WHERE framework_code=? AND framework_version=? ORDER BY control_id, field", fw)))
         if url.path == "/api/queue":
             return self._send(200, _rows(repo.queue(arg("q"), **page)))
         if url.path == "/api/unmapped":
@@ -195,7 +202,8 @@ function decisionBox(onSubmit,{reject}={}){
   const kids=[why,el('div',{className:'actions'},rel,el('label',{className:'mute'},prim,' primary mapping'),go)];
   if(reject)kids[1].append(el('button',{className:'no',textContent:'Reject',onclick:()=>onSubmit({decision:'rejected',rationale:why.value})}));
   return el('div',{},kids)}
-function req(r){return el('div',{},el('div',{className:'lbl'},'Requirement'),el('strong',{},r.control_id+' — '+r.title),el('div',{className:'txt'},r.statement||''))}
+function req(r){return el('div',{},el('div',{className:'lbl'},'Requirement'),el('strong',{},r.control_id+' — '+r.title),
+  r.corrected?el('div',{className:'mute warn'},'Corrected: this text differs from what the source published (see Summary)'):'',el('div',{className:'txt'},r.statement||''))}
 async function guarded(fn){if(!who()){say('Enter your name as reviewer first',true);$('#who').focus();return}
   try{await fn();await refresh()}catch(e){if(e.data&&e.data.candidates)say(e.message+': '+e.data.candidates.map(c=>c.id+' ('+c.score+')').join(', '),true);else say(e.message,true)}}
 async function viewQueue(){
@@ -229,11 +237,14 @@ async function viewMasters(){
     JSON.parse(m.quality_flags||'[]').length?el('div',{className:'warn'},'Needs work before approval: '+JSON.parse(m.quality_flags).join(', ')+' — fix with "master todo" / "master apply-csv"'):'',
     m.status==='draft'&&!JSON.parse(m.quality_flags||'[]').length?el('div',{className:'actions'},el('button',{className:'go',textContent:'Approve (needs a second person)',onclick:()=>guarded(async()=>{await api('/api/master/approve',{id:m.id,reviewer:who()});say('approved')})})):''))]}
 async function viewSummary(){
-  const [s,items]=await Promise.all([api('/api/summary'),api('/api/review-items')]);
+  const [s,items,corr]=await Promise.all([api('/api/summary'),api('/api/review-items'),api('/api/corrections')]);
   return [el('div',{className:'card'},el('div',{className:'lbl'},s.framework),
     el('p',{},`${s.with_approved_mapping} of ${s.active_requirements} active requirements have an approved mapping.`),
     el('p',{},`${s.open_suggestions} suggestion(s) ready to review · ${s.waiting_on_master_approval} waiting for their master control to be approved · masters: ${JSON.stringify(s.masters)} · ${s.open_review_items} open source issue(s)`)),
-    el('div',{className:'card'},el('strong',{},'Quarantined / open source issues'),...items.map(i=>el('div',{className:'mute'},`${i.control_id} · ${i.code} · ${i.status} — ${i.message}`)))]}
+    el('div',{className:'card'},el('strong',{},'Quarantined / open source issues'),...items.map(i=>el('div',{className:'mute'},`${i.control_id} · ${i.code} · ${i.status} — ${i.message}`))),
+    el('div',{className:'card'},el('strong',{},'Corrections to published text'),
+      corr.length?'':el('div',{className:'mute'},'None: every requirement reads exactly as the source published it.'),
+      ...corr.map(c=>el('div',{className:'mute'},`${c.control_id} · ${c.field} · revision ${c.revision} · decided by ${c.reviewer} on ${c.reviewed_at} — wrong because: ${c.problem}; source: ${c.citation}`)))]}
 const VIEWS={queue:['Review queue',viewQueue],unmapped:['Unmapped',viewUnmapped],masters:['Master controls',viewMasters],summary:['Summary',viewSummary]};
 async function refresh(){
   $('#tabs').replaceChildren(...Object.entries(VIEWS).map(([k,[n]])=>el('button',{textContent:n,onclick:()=>{tab=k;refresh()}, ariaPressed:String(k===tab)})));

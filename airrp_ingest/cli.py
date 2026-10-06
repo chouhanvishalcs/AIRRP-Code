@@ -8,7 +8,7 @@ import os
 import sys
 
 from .bundle import build_bundle, write_bundle
-from .curation import load_curation
+from .curation import field_hash, load_curation
 from .masters import DuplicateSuspect, create_master, update_master
 from .oscal import load_catalog
 from .pipeline import PlanBlocked, apply_plan, build_plan, verify_repository
@@ -25,6 +25,8 @@ def _print_plan(plan, limit=15, show_warnings=False):
             print(f"  QUARANTINED {cid}: [{i.code}] {i.message}")
     for cid, _, _ in plan.conflicts[:limit]:
         print(f"  CONFLICT {cid}")
+    for n in plan.correction_notes:
+        print(f"  CORRECTION {n['control_id']} {n['field']}: {n['state']}" + (f" ({n['detail']})" if n["detail"] else ""))
     if show_warnings:
         for i in plan.issues:
             if i.severity != "error":
@@ -49,6 +51,77 @@ def cmd_import(a):
         return 3
     print(f"applied as import_run {run_id}")
     return 2 if plan.quarantined else 0
+
+
+def _find(parsed, control_id):
+    from .normalize import canonical_control_id
+    wanted = canonical_control_id(control_id) or control_id
+    for c in parsed.controls:
+        if c.control_id == wanted:
+            return c
+    raise SystemExit(f"{control_id}: no such control in this catalog")
+
+
+def _evidence(parsed, c, field):
+    """What the catalog itself says about a control, laid out for the person deciding. Evidence, not an answer."""
+    from .normalize import normalize_text
+    peers = [o.control_id for o in parsed.controls if o.control_id != c.control_id and o.status == "active"
+             and normalize_text(getattr(o, field)) == normalize_text(getattr(c, field)) and normalize_text(getattr(c, field))]
+    return {
+        "published_value": getattr(c, field),
+        "other_controls_with_the_identical_text": peers,
+        "parameters": [{"id": p.id, "label": p.label, "choices": list(p.choices)} for p in c.parameters],
+        "assessment_objectives": c.assessment_objectives,
+        "clauses": len(c.clauses),
+        "note": "evidence from the catalog file only; the correct wording comes from the official publication",
+    }
+
+
+def cmd_corrections(a):
+    from .normalize import normalize_text
+    if a.action == "list":
+        repo = open_repository(a.db, four_eyes=not a.solo)
+        rows = repo.correction_history(a.framework_code, a.version)
+        if not a.history:
+            latest = {(r["control_id"], r["field"]): r for r in rows}
+            rows = [r for r in latest.values() if r["action"] == "set"]
+        for r in rows:
+            print(f"{r['control_id']:<10} {r['field']:<9} r{r['revision']} {r['action']:<6} by {r['reviewer']} on {r['reviewed_at']}"
+                  f" - {r['problem']}" + (f" [{r['citation']}]" if r["citation"] else ""))
+        print(f"{len(rows)} correction record(s)" + ("" if a.history else " in force"))
+        return 0
+    parsed = load_catalog(a.catalog, a.framework_code)
+    if a.action == "check":
+        repo = open_repository(a.db, four_eyes=not a.solo)
+        plan = build_plan(parsed, repo, load_manifest(a.manifest), load_curation(a.curation))
+        for n in plan.correction_notes:
+            print(f"{n['control_id']:<10} {n['field']:<9} {n['state']}" + (f" - {n['detail']}" if n["detail"] else ""))
+        bad = [i for i in plan.issues if i.code.startswith("CORRECTION_")]
+        for i in bad:
+            print(f"  {i.severity.upper():<7} {i.control_id or '-'} [{i.code}] {i.message}")
+        print(f"{plan.corrected} control(s) read differently from the published text; {len(plan.corrections)} record(s) would be written")
+        return 1 if any(i.severity == "error" for i in bad) else 0
+    c = _find(parsed, a.control)
+    if a.action == "show":
+        ev = _evidence(parsed, c, a.field or "statement")
+        repo = open_repository(a.db, four_eyes=not a.solo)
+        for r in repo.correction_history(parsed.framework.code, parsed.framework.version, c.control_id):
+            print(f"recorded: {r['field']} r{r['revision']} {r['action']} by {r['reviewer']} on {r['reviewed_at']}: {r['problem']}")
+        print(json.dumps({"control_id": c.control_id, "title": c.title, **ev}, indent=2, ensure_ascii=False))
+        return 0
+    # draft: a skeleton entry for a person to complete; it will not load until every required field is filled in
+    field = a.field or "statement"
+    if os.path.exists(a.out):
+        raise SystemExit(f"{a.out} already exists; choose a new file and copy the finished entry into the curation file")
+    entry = {"framework_version": parsed.framework.version, "control_id": c.control_id, "field": field,
+             "value": "", "source_value_sha256": field_hash(getattr(c, field)), "problem": "", "citation": "",
+             "reviewer": "", "reviewed_at": "", "_evidence": _evidence(parsed, c, field)}
+    with open(a.out, "w", encoding="utf-8") as fh:
+        json.dump({"corrections": [entry]}, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    print(f"wrote {a.out}: fill in value, problem, citation, reviewer and reviewed_at from the official text, then move the "
+          "entry into the curation file and run import (dry run first)")
+    return 0
 
 
 def cmd_verify(a):
@@ -206,6 +279,13 @@ def main(argv=None):
 
     s = sub.add_parser("verify"); s.set_defaults(fn=cmd_verify)
     s.add_argument("catalog"); s.add_argument("--framework-code", default="NIST-SP-800-53"); s.add_argument("--curation")
+
+    s = sub.add_parser("corrections"); s.set_defaults(fn=cmd_corrections)
+    s.add_argument("action", choices=["check", "show", "draft", "list"])
+    s.add_argument("catalog", nargs="?"); s.add_argument("--framework-code", default="NIST-SP-800-53")
+    s.add_argument("--version"); s.add_argument("--manifest"); s.add_argument("--curation")
+    s.add_argument("--control"); s.add_argument("--field", choices=["title", "statement", "guidance"])
+    s.add_argument("--out"); s.add_argument("--history", action="store_true")
 
     s = sub.add_parser("master"); s.set_defaults(fn=cmd_master)
     s.add_argument("action", choices=["add", "approve", "list", "update", "todo", "apply-csv"])

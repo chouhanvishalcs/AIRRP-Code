@@ -22,6 +22,13 @@ Consumer contract (what your side should do, in one transaction):
 3. A mapping whose requirement or master control does not exist is a hard error, not a skip.
 4. Keep the `reviewer`/`reviewed_at`/`approved_by` fields; they are your audit trail.
 
+Requirements carry the *effective* text: what the source published, with any person-made correction laid over it
+(see [CORRECTIONS.md](CORRECTIONS.md)). `content_hash` is the hash of that effective content. When (and only when) corrections
+exist, the bundle has an optional top-level `corrections[]` array (requirement code, field, revision, the published value, the
+corrected value, problem, citation, reviewer, date) so you can show provenance; a consumer that ignores it still receives the
+right text and hash, and a bundle with no corrections has no such key and is byte-identical to one built before corrections existed.
+A correction to a requirement you already hold arrives as a changed `content_hash` for that one `code`.
+
 The same bundle can be re-applied any number of times; identical content is a no-op.
 
 ## 2. Existing requirement payload - `airrp-ingest export --format requirements`
@@ -30,12 +37,13 @@ The array of `{code, name, frequency, legalText, legalTitle, description, ownerF
 sourceReference}` objects your system already accepts. Proven identical to the workbook's own payloads for the 1,013 of 1,014
 active NIST SP 800-53 r5.2.0 controls (the 1,014th, SA-4(7), differs only by a trailing space that the importer trims from titles).
 `ownerFunction` and `frequency` are exported as empty strings because the source does not define them.
+Where a correction exists the corrected text is what is exported; the payload has no field for provenance, so none travels with it (use route 1 for that).
 
 ## 3. Storage adapter - `airrp_ingest.store.SqlRepository`
 
 All domain rules are written once, as portable SQL, in `SqlRepository`. An adapter only supplies the connection, the DDL
 (constraints, partial unique indexes, triggers), and three primitives (`execute`, `_insert_returning_id`, `lock_framework`).
-Two adapters ship and run the same 118-test contract suite: `SqliteRepository` and `PostgresRepository` (real PostgreSQL 16,
+Two adapters ship and run the same 198-test suite: `SqliteRepository` and `PostgresRepository` (real PostgreSQL 16,
 constraints and plpgsql triggers; see `pg_store.py` for what a second engine needs). For another engine, copy `pg_store.py`,
 translate the DDL, and add it to `ENGINES` in `tests/helpers.py`; if the contract tests pass, the rules hold.
 
