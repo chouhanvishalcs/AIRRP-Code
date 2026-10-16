@@ -40,6 +40,7 @@ class GleifClient:
     def __init__(self, fetcher, api: str = API):
         self.fetcher, self.api = fetcher, api.rstrip("/")
         self.errors: list[str] = []
+        self._cache: dict[str, dict] = {}       # legal forms and registration authorities repeat across a group
 
     def _json(self, path: str):
         r = self.fetcher.get(self.api + path, accept="application/vnd.api+json, application/json", check_robots=False)
@@ -68,7 +69,9 @@ class GleifClient:
         return []
 
     def _attributes(self, path: str) -> dict:
-        return ((self._json(path) or {}).get("data") or {}).get("attributes") or {}
+        if path not in self._cache:
+            self._cache[path] = ((self._json(path) or {}).get("data") or {}).get("attributes") or {}
+        return self._cache[path]
 
     def legal_form_names(self, code: str) -> list[str]:
         attrs = self._attributes(f"/entity-legal-forms/{quote(code)}")
@@ -78,6 +81,24 @@ class GleifClient:
                 if isinstance(v, str) and v and ("name" in k.lower() or "abbreviation" in k.lower()):
                     out.append(v)
         return list(dict.fromkeys(out))
+
+    def group_entities(self, lei: str, limit: int = 1000) -> tuple[list[dict], int, str]:
+        """LEI records of the entities consolidated under `lei` (ultimate children, else direct children), as
+        reported to GLEIF: (records, total GLEIF reports, relation used)."""
+        for relation in ("ultimate-children", "direct-children"):
+            records, total, page = [], 0, 1
+            while len(records) < limit:
+                d = self._json(f"/lei-records/{quote(lei)}/{relation}?page%5Bnumber%5D={page}&page%5Bsize%5D=200") or {}
+                data = d.get("data") or []
+                records += data
+                pagination = (d.get("meta") or {}).get("pagination") or {}
+                total = pagination.get("total") or len(records)
+                if not data or page >= (pagination.get("lastPage") or page):
+                    break
+                page += 1
+            if records:
+                return records[:limit], total, relation
+        return [], 0, ""
 
     def registration_authority(self, code: str) -> str | None:
         attrs = self._attributes(f"/registration-authorities/{quote(code)}")
@@ -224,3 +245,45 @@ def candidates(rec: dict, client: GleifClient, matched_by: str) -> tuple[list[Ca
                "registration_status": reg.get("status"), "last_update": reg.get("lastUpdateDate"),
                "corroboration_level": reg.get("corroborationLevel")}
     return out, summary
+
+
+def _display_name(e: dict) -> str:
+    """Legal name, followed by an English/Latin other name when the legal name is in another script."""
+    legal = (e.get("legalName") or {}).get("name") or ""
+    if legal and kb.CJK.search(legal):
+        latin = next((n["name"] for k in ("otherNames", "transliteratedOtherNames") for n in (e.get(k) or [])
+                      if n.get("name") and not kb.CJK.search(n["name"])), "")
+        return f"{legal} ({latin})" if latin else legal
+    return legal
+
+
+def group_overview(records: list[dict], parent_hq_country: str | None, relation: str, parent_lei: str):
+    """Subsidiaries (entities with an LEI that report this parent) -> (one row per entity, operating-location
+    candidates of the parent: one per country with active subsidiaries). Inactive entities are listed, not counted."""
+    rows, by_country = [], {}
+    for r in records:
+        a = r.get("attributes") or {}
+        e = a.get("entity") or {}
+        hq = e.get("headquartersAddress") or e.get("legalAddress") or {}
+        lei = a.get("lei") or r.get("id") or ""
+        row = {"lei": lei, "name": _display_name(e), "country": hq.get("country") or "", "city": hq.get("city") or "",
+               "headquarters_address": _address(hq)[0], "status": e.get("status") or "",
+               "record_url": RECORD_URL.format(lei=lei)}
+        rows.append(row)
+        if row["status"] == "ACTIVE" and row["country"]:
+            by_country.setdefault(row["country"], []).append(row)
+    cands = []
+    for code, group in sorted(by_country.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        n, first = len(group), group[0]
+        cities = sorted({x["city"] for x in group if x["city"]})
+        where = f" ({', '.join(cities[:4])}{'…' if len(cities) > 4 else ''})" if cities else ""
+        cands.append(Candidate(
+            "operating_location", f"{kb.country_name(code)}: {n} subsidiar{'y' if n == 1 else 'ies'}{where}",
+            "group-country:" + code, 0.8 if code == parent_hq_country else 0.7,
+            Evidence("registry", first["record_url"], f"GLEIF relationship data ({relation} of {parent_lei})",
+                     f"{first['name']}, {first['headquarters_address']}"),
+            details=[f"{x['name']}: {x['headquarters_address']} (LEI {x['lei']})" for x in group[:8]]
+            + ([f"… and {n - 8} more (see subsidiaries)"] if n > 8 else [])))
+    by_country_list = [{"country": c, "name": kb.country_name(c), "subsidiaries": len(v)}
+                       for c, v in sorted(by_country.items(), key=lambda kv: (-len(kv[1]), kv[0]))]
+    return rows, cands, by_country_list

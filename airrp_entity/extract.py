@@ -247,9 +247,31 @@ def looks_like_name(s: str, need_suffix: bool = False) -> bool:
     return kb.legal_form_of(s) is not None or not need_suffix
 
 
+POSTCODE_RX = re.compile(r"\b\d{3}-\d{4}\b|\b\d{4,6}(?:-\d{4})?\b|\b[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}\b|\b[A-Z]\d[A-Z] ?\d[A-Z]\d\b")
+
+
+def _address_under(lines: list[str], n: int) -> tuple[str, int]:
+    """The address written on the lines below lines[n] (up to four, stopping at a label or after the country line):
+    (address, number of lines used), or ("", 0)."""
+    block = []
+    for nxt in lines[n + 1:n + 5]:
+        if label_target(nxt) or re.match(r"^[^:：]{2,40}[:：]", nxt) or len(nxt) > 80:
+            break
+        if not block and kb.lookup_place(nxt):        # a country heading starts the next section
+            break
+        block.append(nxt)
+        if kb.country_in_text(nxt):
+            break
+    addr = ", ".join(block)
+    return (addr, len(block)) if len(block) >= 2 and looks_like_address(addr) else ("", 0)
+
+
 def address_key(s: str) -> str:
-    """Same address written with or without its country ('..., United Kingdom' / '..., GB') gets the same key."""
+    """Same address written with or without its country ('..., United Kingdom' / '..., GB') or a leading
+    building/office name ('Customer Centre, 200 Harbour Road, ...') gets the same key."""
     parts = [x for x in re.split(r"[,\n]", kb.nfkc(s)) if x.strip()]
+    while len(parts) > 2 and not re.search(r"\d", parts[0]) and any(re.search(r"\d", x) for x in parts[1:]):
+        parts = parts[1:]
     if len(parts) > 1 and (kb.country_in_text(parts[-1]) and kb.lookup_place(parts[-1])
                            or kb.is_country(parts[-1].strip().upper())):
         parts = parts[:-1]
@@ -436,6 +458,12 @@ class _Collector:
                 continue
             src = f"schema.org JSON-LD ({'/'.join(types)})"
             legal, name = _s(node.get("legalName")), _s(node.get("name"))
+            if node.get("_via"):           # a group company / parent / unit: only its address is evidence (an office)
+                addr = _address_from_jsonld(node.get("address"))
+                if addr and looks_like_address(addr):
+                    self.add("operating_location", addr, address_key(addr), 0.6, p, f"{src} {node['_via']} address",
+                             addr, details=[f"office of {legal or name}"] if (legal or name) else [])
+                continue
             if legal and looks_like_name(legal):
                 self.add("registered_legal_name", legal, "name:" + kb.fold(legal), 0.85, p, src + " legalName",
                          f"legalName: {legal}")
@@ -544,15 +572,8 @@ class _Collector:
                     continue
                 self.add("registered_legal_name", line, "name:" + kb.fold(line), 0.7 * kf, p,
                          "entity name on its own line (legal notice layout)", " / ".join(lines[n:n + 4]))
-                block = []
-                for nxt in lines[n + 1:n + 5]:
-                    if label_target(nxt) or re.match(r"^[^:：]{2,40}[:：]", nxt) or len(nxt) > 80:
-                        break
-                    block.append(nxt)
-                    if kb.country_in_text(nxt):
-                        break
-                addr = ", ".join(block)
-                if len(block) >= 2 and looks_like_address(addr):
+                addr, _ = _address_under(lines, n)
+                if addr:
                     self.add("operating_location", addr, address_key(addr), 0.65 * kf, p,
                              "address under the entity name (legal notice layout)", f"{line} / {addr}")
                     self.add("registered_office", addr, address_key(addr), 0.5 * kf, p,
@@ -593,6 +614,21 @@ class _Collector:
             for a in p.parsed.addresses:
                 if looks_like_address(a):
                     self.add("operating_location", a, address_key(a), 0.55 * kf, p, "<address> element", a)
+        if p.kind == "contact":       # office directory: an office name, then its address lines
+            lines, n = p.parsed.lines, 1
+            while n < len(lines):
+                if not re.search(r"\d", lines[n]) or re.search(r"\d", lines[n - 1]) or len(lines[n - 1]) > 80:
+                    n += 1
+                    continue
+                addr, used = _address_under(lines, n - 1)
+                if addr and (kb.country_in_text(addr) or POSTCODE_RX.search(addr)):
+                    heading = next((h for h in (lines[n - 1], lines[n - 2] if n > 1 else "")
+                                    if h and not kb.lookup_place(h)), lines[n - 1])
+                    self.add("operating_location", addr, address_key(addr), 0.6 * kf, p,
+                             "office listed on a locations/contact page", f"{heading} / {addr}",
+                             details=[f"office: {heading}"])
+                    n += used
+                n += 1
 
     def _legal_phrases(self, p, text, kf):
         for m in LEGAL_PHRASE_RX.finditer(text):

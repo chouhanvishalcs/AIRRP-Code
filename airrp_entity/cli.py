@@ -10,7 +10,7 @@ import sys
 
 from .fetch import DEFAULT_USER_AGENT, BrowserRenderer, Fetcher
 from .model import FIELDS
-from .profile import build_profile, to_csv, to_markdown
+from .profile import build_profile, to_csv, to_markdown, to_subsidiaries_csv
 
 
 def _common(p):
@@ -23,7 +23,24 @@ def _common(p):
     p.add_argument("--render", action="store_true", help="render JavaScript-built pages with Playwright (pip install playwright)")
     p.add_argument("--also-domain", action="append", default=[], metavar="DOMAIN",
                    help="another domain of the same organisation to include (repeatable)")
+    g = p.add_argument_group("subsidiaries (from the GLEIF registry's parent/child relationship data)")
+    g.add_argument("--no-subsidiaries", action="store_true", help="do not list the subsidiaries")
+    g.add_argument("--max-subsidiaries", type=int, default=1000, help="subsidiaries to read from GLEIF (default 1000)")
+    g.add_argument("--crawl-subsidiaries", type=int, default=0, metavar="N",
+                   help="also crawl up to N subsidiary websites (country sites linked from the parent's site and any "
+                        "given with --subsidiary-sites) and add their website fields (default 0: registry data only)")
+    g.add_argument("--subsidiary-pages", type=int, default=8, help="pages per subsidiary website (default 8)")
+    g.add_argument("--subsidiary-sites", metavar="CSV",
+                   help="CSV of subsidiary websites to crawl first (columns: url, optional name, lei)")
     p.add_argument("--quiet", action="store_true")
+
+
+def _sites(path):
+    if not path:
+        return []
+    with open(path, encoding="utf-8-sig", newline="") as fh:
+        rows = [{(k or "").strip().lower(): (v or "").strip() for k, v in r.items()} for r in csv.DictReader(fh)]
+    return [{k: v for k, v in r.items() if k in ("url", "name", "lei") and v} for r in rows if r.get("url")]
 
 
 def _fetcher(a):
@@ -33,7 +50,10 @@ def _fetcher(a):
 def _run(a, urls, fetcher, renderer, lei=None):
     log = None if a.quiet else (lambda m: print(m, file=sys.stderr))
     return build_profile(urls, fetcher=fetcher, max_pages=a.max_pages, registry=not a.no_registry,
-                         extra_domains=a.also_domain, renderer=renderer, lei=lei, log=log)
+                         extra_domains=a.also_domain, renderer=renderer, lei=lei, log=log,
+                         subsidiaries=not a.no_subsidiaries, max_subsidiaries=a.max_subsidiaries,
+                         crawl_subsidiaries=a.crawl_subsidiaries, subsidiary_pages=a.subsidiary_pages,
+                         subsidiary_sites=_sites(a.subsidiary_sites))
 
 
 def _print_summary(profile):
@@ -44,6 +64,10 @@ def _print_summary(profile):
         if isinstance(v, list):
             v = "; ".join(v[:8]) + (f"; … (+{len(v) - 8})" if len(v) > 8 else "")
         print(f"{label:<{width}}  {v or '—'}  [{f['confidence'] or 'not found'}{', ' + f['status'] if f['value'] else ''}]")
+    subs = profile.get("subsidiaries")
+    if subs:
+        print(f"{'Subsidiaries':<{width}}  {subs['fetched']} from GLEIF ({subs['active']} active, {subs['countries']} countries), "
+              f"{len(subs['websites_crawled'])} with a matched website")
     for n in profile["notes"][:-2]:
         print(f"note: {n}")
 
@@ -64,6 +88,9 @@ def cmd_profile(a):
     if a.csv:
         with open(a.csv, "w", encoding="utf-8", newline="") as fh:
             fh.write(to_csv([profile]))
+    if a.subsidiaries_csv:
+        with open(a.subsidiaries_csv, "w", encoding="utf-8", newline="") as fh:
+            fh.write(to_subsidiaries_csv(profile))
     if not a.quiet:
         _print_summary(profile)
     return 0 if profile["pages"] else 1
@@ -96,6 +123,9 @@ def cmd_batch(a):
                 json.dump(profile, fh, ensure_ascii=False, indent=2)
             with open(base + ".md", "w", encoding="utf-8") as fh:
                 fh.write(to_markdown(profile))
+            if (profile.get("subsidiaries") or {}).get("entities"):
+                with open(base + "-subsidiaries.csv", "w", encoding="utf-8", newline="") as fh:
+                    fh.write(to_subsidiaries_csv(profile))
             if not a.quiet:
                 print(f"{urls[0]}: {profile['summary']['registered_legal_name'] or '(legal name not found)'} -> {base}.json",
                       file=sys.stderr)
@@ -116,6 +146,7 @@ def main(argv=None):
     p.add_argument("--out", help="write the full profile (values + evidence) as JSON")
     p.add_argument("--markdown", help="write a readable report")
     p.add_argument("--csv", help="write one summary row as CSV")
+    p.add_argument("--subsidiaries-csv", help="write one row per subsidiary (all twelve fields) as CSV")
     p.add_argument("--lei", help="use this LEI for the registry cross-check instead of searching")
     _common(p)
     p.set_defaults(fn=cmd_profile)

@@ -126,6 +126,7 @@ class CrawlResult:
     skipped: list[dict] = field(default_factory=list)
     documents: list[dict] = field(default_factory=list)
     site_keys: set[str] = field(default_factory=set)
+    related_sites: list[dict] = field(default_factory=list)   # other domains of the same brand (country sites ...)
 
 
 def crawl(seeds, fetcher: Fetcher, max_pages: int = 25, extra_domains=(), renderer=None, log=None) -> CrawlResult:
@@ -149,6 +150,19 @@ def crawl(seeds, fetcher: Fetcher, max_pages: int = 25, extra_domains=(), render
         if n not in doc_seen and len(res.documents) < 30:
             doc_seen.add(n)
             res.documents.append({"url": url, "text": text, "found_on": found_on})
+
+    brands = {brand_token(k) for k in res.site_keys if len(brand_token(k)) >= 4}
+    related_seen: set[str] = set()
+
+    def add_related(url, text, found_on):
+        """A link to another domain whose name starts with the organisation's brand (sony.co.uk, sonypictures.com):
+        usually a country site or a subsidiary. Recorded, not crawled."""
+        p = urlsplit(url)
+        key = site_key(p.hostname or "")
+        if (p.scheme in ("http", "https") and key not in res.site_keys and key not in related_seen
+                and any(brand_token(key).startswith(b) for b in brands) and len(res.related_sites) < 300):
+            related_seen.add(key)
+            res.related_sites.append({"url": url, "site": key, "text": " ".join(text.split())[:80], "found_on": found_on})
 
     def drain():
         while heap and len(res.pages) < max_pages:
@@ -199,7 +213,10 @@ def crawl(seeds, fetcher: Fetcher, max_pages: int = 25, extra_domains=(), render
                     if in_scope(link.url) and (DOC_HINT.search(link.url + " " + link.text) or score >= 2):
                         add_document(link.url, link.text, resp.url)
                     continue
-                if not in_scope(link.url) or normalize_url(link.url) in seen:
+                if not in_scope(link.url):
+                    add_related(link.url, link.text, resp.url)
+                    continue
+                if normalize_url(link.url) in seen:
                     continue
                 if (depth == 0 and score >= 2) or (depth == 1 and score >= 3):
                     push(link.url, depth + 1, score, link.text)

@@ -71,9 +71,9 @@ class LocalServerTests(unittest.TestCase):
         self.assertEqual(f.get(self.base + "/missing/").error, "HTTP 404")
 
     def test_profile_command_writes_json_markdown_and_csv(self):
-        out, md, row = (os.path.join(self.tmp, n) for n in ("p.json", "p.md", "p.csv"))
+        out, md, row, subs = (os.path.join(self.tmp, n) for n in ("p.json", "p.md", "p.csv", "s.csv"))
         code = main(["profile", self.base + "/", "--no-registry", "--delay", "0", "--out", out, "--markdown", md,
-                     "--csv", row, "--quiet"])
+                     "--csv", row, "--subsidiaries-csv", subs, "--quiet"])
         self.assertEqual(code, 0)
         with open(out, encoding="utf-8") as fh:
             p = json.load(fh)
@@ -84,6 +84,8 @@ class LocalServerTests(unittest.TestCase):
             self.assertIn("# Entity profile: Northwind Example Holdings plc", fh.read())
         with open(row, encoding="utf-8") as fh:
             self.assertEqual(next(csv.DictReader(fh))["registered_legal_name"], "Northwind Example Holdings plc")
+        with open(subs, encoding="utf-8") as fh:            # no registry: no subsidiaries, just the header
+            self.assertEqual([r for r in csv.reader(fh)][0][:3], ["lei", "name", "relation"])
 
     def test_batch_command(self):
         listing = os.path.join(self.tmp, "orgs.csv")

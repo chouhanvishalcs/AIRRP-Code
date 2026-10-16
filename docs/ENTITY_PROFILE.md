@@ -19,6 +19,14 @@ python -m airrp_entity profile https://www.sony.com/en/ <url-of-the-corporate-da
 # you already know the LEI (20 characters, ISO 17442): skip the registry name search
 python -m airrp_entity profile https://www.sony.com/en/ --lei <LEI> --out sony.json
 
+# subsidiaries: every entity that reports Sony Group as its parent to GLEIF, one CSV row each with all twelve fields
+python -m airrp_entity profile https://www.sony.com/en/ --out sony.json --subsidiaries-csv sony-subsidiaries.csv
+
+# ... and also crawl up to 30 subsidiary websites (country sites linked from sony.com, or your own list) to add
+# the fields only a website has (industry, markets, regulated activity, regulator)
+python -m airrp_entity profile https://www.sony.com/en/ --crawl-subsidiaries 30 --subsidiaries-csv sony-subsidiaries.csv
+python -m airrp_entity profile https://www.sony.com/en/ --crawl-subsidiaries 30 --subsidiary-sites my-sites.csv
+
 # many organisations: CSV with columns url (required), name, lei  ->  one JSON + Markdown each, plus summary.csv
 python -m airrp_entity batch examples/organisations.csv --out-dir profiles/
 ```
@@ -29,7 +37,8 @@ Technology & Services subsidiary); `electronics.sony.com`, `playstation.com` and
 gets its own profile; `examples/organisations.csv` profiles the first two side by side.
 
 Output on the terminal is one line per field with its confidence; `--out` writes everything (values, alternatives,
-evidence, pages fetched, documents found, notes), `--markdown` a readable report, `--csv` one summary row.
+evidence, subsidiaries, pages fetched, documents found, notes), `--markdown` a readable report, `--csv` one summary
+row, `--subsidiaries-csv` one row per subsidiary.
 
 Needs outbound HTTPS to the organisation's site and, for the registry cross-check, to `api.gleif.org`
 (`--no-registry` to skip it). In a restricted network, allow those hosts.
@@ -43,13 +52,46 @@ Needs outbound HTTPS to the organisation's site and, for the registry cross-chec
 | Legal entity type | labelled "Legal form / Rechtsform…", "is a public limited company" wording, CIN class; otherwise inferred from the name's suffix (`Corporation` + Japan = kabushiki kaisha, `GmbH`, `plc`, `Pvt. Ltd.`…) | ISO 20275 ELF code and its name |
 | Registration jurisdiction | "registered in England and Wales", "incorporated under the laws of …", "a Delaware corporation", jurisdiction implied by a labelled register number, country of the registered office | `jurisdiction` |
 | Registered office | labelled "Registered office / Sitz / siège social / 本店", "registered office: …" statements; a "Head office" is only a weak hint | `legalAddress` |
-| Operating location | labelled "Head office / Headquarters / 本社 / Address", schema.org address, `<address>` blocks, "headquartered in …" | `headquartersAddress` |
+| Operating location | labelled "Head office / Headquarters / 本社 / Address", schema.org address (and `subOrganization` addresses), `<address>` blocks, every office on a locations/contact page, "headquartered in …" | `headquartersAddress`; one entry per country with active subsidiaries |
 | Entity operating status | explicit statements about *this* entity ("we are in administration", "… i.L."), stock-exchange listing, live and maintained site (weak) | entity `status` (ACTIVE / INACTIVE, expiry reason, successor) |
 | Government or public-sector status | official government domains (.gov, .go.jp, .gov.uk…), schema.org `GovernmentOrganization`, self-description ("we are a non-departmental public body", "wholly owned by the government"), India CIN class GOI/SGC, stock-exchange listing (private sector) | `category` (RESIDENT_GOVERNMENT_ENTITY, INTERNATIONAL_ORGANIZATION…) |
 | Enterprise industry / sector | labelled "Business / Line of business / 事業内容", schema.org NAICS/ISIC, SIC/NACE codes, keyword evidence mapped to GICS-style sectors (`data/sectors.json`) | - |
 | Market or country served | hreflang alternates (localised sites), country/region selector links, stated "in more than N countries", schema.org `areaServed`, country-code domain | - |
 | Regulated activity | activities implied by a regulator named with a regulatory cue; keyword evidence (`data/activities.json`: banking, insurance, investment, payments, credit, crypto, telecoms, broadcasting, medical devices, pharma, energy, gambling, AI systems …) | - |
 | Regulator or licence | regulator named after "authorised and regulated by / licensed by / member of / 登録 …" (`data/regulators.json`, 100 regulators in 26 jurisdictions), licence numbers (FCA FRN, NMLS, FINRA CRD, AFSL, Japan Local Finance Bureau 金商 registrations, SEBI, IRDAI, BaFin-ID, CySEC …) | - |
+
+## Offices and subsidiaries
+
+A multinational's offices mostly belong to its subsidiaries (Sony Europe B.V., Sony Electronics Inc., …), each a separate
+legal entity with its own name, registration, legal form and regulators. The tool covers them in three ways:
+
+1. **Offices named on the organisation's own site.** Every office on a locations/contact page (name, then address lines),
+   `<address>` blocks, and JSON-LD `subOrganization` addresses become operating locations. A subsidiary's name in JSON-LD
+   is never taken as the site's own legal name.
+2. **Subsidiaries from GLEIF** (on by default once the parent's LEI record is found). GLEIF publishes who owns whom:
+   each entity reports its accounting-consolidation parents. The tool reads the parent's *ultimate children* (falling
+   back to *direct children*), up to `--max-subsidiaries` (1000), and profiles every subsidiary from its own LEI record:
+   registered legal name, LEI and register number, legal form, jurisdiction, registered office, head office, status,
+   government category. Active subsidiaries also feed the parent's operating locations as "<country>: N subsidiaries
+   (cities)". Inactive ones are listed but not counted.
+3. **Subsidiary websites, on request** (`--crawl-subsidiaries N`). Sites given with `--subsidiary-sites` (CSV: url,
+   optional name, lei) come first, then other domains of the same brand linked from the parent's site (country sites
+   such as `sony.co.uk`, brand sites such as `sonypictures.com`; listed under `related_sites`). Each site gets
+   `--subsidiary-pages` (8) pages. It is attached to a subsidiary **only** by an LEI on the site, the LEI given in the CSV,
+   or one exact legal-name match. Its website evidence then completes that subsidiary's industry, markets, regulated
+   activity and regulator fields and corroborates the registry ones. A site that matches no subsidiary is reported
+   under `subsidiaries.unmatched_sites` with what it says about itself, marked "verify it belongs to the group". It
+   could be a distributor.
+
+Output: `subsidiaries` in the JSON (counts, `by_country`, and one entry per subsidiary with its twelve fields and best
+evidence), a Subsidiaries section in the Markdown report, and `--subsidiaries-csv` (one row per subsidiary; in `batch`
+mode `<name>-subsidiaries.csv`).
+
+Limits: GLEIF lists only subsidiaries that hold an LEI **and** have reported their parent. Branches, representative
+offices and entities without an LEI do not appear, and a group's own count of consolidated subsidiaries (annual
+report, Form 20-F exhibit 8) can be much higher. Those documents are listed under `documents_for_review` when the
+crawler meets them. Without the registry (`--no-registry`), `--crawl-subsidiaries` still profiles the related sites,
+but every one of them stays unverified.
 
 ## Confidence, status and conflicts
 
@@ -129,5 +171,5 @@ which are natural next adapters (`gleif.py` is the template).
 }
 ```
 
-Tests: `python -m unittest tests.test_entity_identifiers tests.test_entity_profile tests.test_entity_cli`. They run
+Tests: `python -m unittest tests.test_entity_identifiers tests.test_entity_profile tests.test_entity_subsidiaries tests.test_entity_cli`. They run
 offline against fictional sites in `tests/fixtures/entity_sites/` and a local HTTP server.

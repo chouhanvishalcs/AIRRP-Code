@@ -84,11 +84,13 @@ python -m airrp_ingest --db postgresql://user:pass@host/db import data/catalog.j
 Registered legal name, registration reference, legal form, jurisdiction, registered office, operating locations,
 operating status, government/public-sector status, industry, markets, regulated activities and regulators/licences of an
 organisation, read from its own website with the page and words behind every value, and cross-checked against the
-public GLEIF LEI registry. Nothing is guessed: unsupported fields stay empty, disagreements are flagged for a person.
+public GLEIF LEI registry. Subsidiaries (from GLEIF's parent/child data, optionally with their own websites) get the
+same twelve fields. Nothing is guessed: unsupported fields stay empty, disagreements are flagged for a person.
 Details, sources per field and limits: [docs/ENTITY_PROFILE.md](docs/ENTITY_PROFILE.md).
 
 ```bash
 python -m airrp_entity profile https://www.sony.com/en/ --out sony.json --markdown sony.md
+python -m airrp_entity profile https://www.sony.com/en/ --subsidiaries-csv sony-subsidiaries.csv --crawl-subsidiaries 30
 python -m airrp_entity batch examples/organisations.csv --out-dir profiles/      # columns: url, name, lei
 ```
 

@@ -277,7 +277,7 @@ def _fr_siret(m, text):
 
 @scheme("NL-KVK", "Netherlands Chamber of Commerce (KvK) number", "NL",
         r"\b(?:KvK|K\.v\.K\.|Kamer\s+van\s+Koophandel|(?:Dutch\s+)?Chamber\s+of\s+Commerce)"
-        r"(?:[-\s]?(?:nummer|number|nr\.?|no\.?|registration(?:\s+number)?))?\s*[:.]?\s*(\d{8})\b")
+        r"(?:[-\s]?(?:nummer|number|nr\.?|no\.?|registration(?:\s+number)?))?[^\d\n.;]{0,30}?(\d{8})\b")
 def _kvk(m, text):
     return m.group(1), None, True, {}
 

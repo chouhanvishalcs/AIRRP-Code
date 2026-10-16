@@ -12,6 +12,9 @@ BLOCK = {"address", "article", "aside", "blockquote", "br", "caption", "dd", "de
          "nav", "ol", "option", "p", "pre", "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul"}
 SKIP = {"script", "style", "noscript", "template", "svg", "iframe", "canvas", "object", "select"}
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+# schema.org properties whose value is a *different* organisation (group company, parent, unit, partner)
+OTHER_ENTITY_PROPS = {"subOrganization", "parentOrganization", "department", "member", "memberOf", "brand", "sponsor",
+                      "funder", "competitor", "manufacturer", "alumniOf", "affiliation", "owns", "seller"}
 MICRODATA = {"legalName", "name", "address", "streetAddress", "postalCode", "addressLocality", "addressRegion",
              "addressCountry", "taxID", "vatID", "leiCode", "duns", "naics", "isicV4", "areaServed", "foundingDate"}
 
@@ -226,15 +229,18 @@ class _Parser(HTMLParser):
             data = json.loads(raw, strict=False)
         except ValueError:
             return
-        stack = [data]
+        stack = [(data, None)]
         while stack:
-            node = stack.pop()
+            node, via = stack.pop()
             if isinstance(node, list):
-                stack.extend(node)
+                stack.extend((n, via) for n in node)
             elif isinstance(node, dict):
                 if "@type" in node:
+                    if via:
+                        node["_via"] = via        # nested under e.g. subOrganization: another entity, not the site's
                     self.page.jsonld.append(node)
-                stack.extend(v for v in node.values() if isinstance(v, (dict, list)))
+                stack.extend((v, via or (k if k in OTHER_ENTITY_PROPS else None)) for k, v in node.items()
+                             if isinstance(v, (dict, list)))
 
     def finish(self) -> ParsedPage:
         self.close()

@@ -14,7 +14,10 @@
 {"@context": "https://schema.org", "@type": "Organization", "name": "Northwind",
  "legalName": "Northwind Example Holdings plc", "url": "https://www.northwind.example/",
  "address": {"@type": "PostalAddress", "streetAddress": "1 Example Street", "addressLocality": "London",
-             "postalCode": "EC1A 1AA", "addressCountry": "GB"}}
+             "postalCode": "EC1A 1AA", "addressCountry": "GB"},
+ "subOrganization": {"@type": "Organization", "legalName": "Northwind Insurance Limited",
+                     "address": {"@type": "PostalAddress", "streetAddress": "5 Dock Lane", "addressLocality": "Bristol",
+                                 "postalCode": "BS1 4ND", "addressCountry": "GB"}}}
 </script>
 </head>
 <body>
@@ -31,6 +34,7 @@
 <footer>
   <a href="/about/">About us</a> | <a href="/legal/">Legal notice</a> | <a href="/regulatory/">Regulatory information</a> |
   <a href="/investors/">Investors</a> | <a href="/contact/">Contact us</a> | <a href="/countries/">Choose your country</a> |
+  <a href="/offices/">Our locations</a> |
   <a href="/private/secret/">Legal archive</a> | <a href="/docs/annual-report-2025.pdf">Annual Report 2025</a>
   <p>&copy; 2026 Northwind Example Holdings plc. All rights reserved.</p>
 </footer>

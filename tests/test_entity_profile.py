@@ -48,7 +48,7 @@ class WebsiteOnlyTests(unittest.TestCase):
         self.assertEqual(set(self.f["corporate_registration_reference"]["value"]), {
             "Legal Entity Identifier (LEI): 9845001NWXTEST000047 (check digit valid)",
             "UK Companies House company number: 01234567", "VAT identification number: GB123456789"})
-        self.assertEqual(self.f["operating_location"]["value"], ["1 Example Street, London EC1A 1AA, United Kingdom"])
+        self.assertEqual(self.f["operating_location"]["value"][0], "1 Example Street, London EC1A 1AA, United Kingdom")
         self.assertIn("Banks (Financials)", self.f["industry_sector"]["value"])
         self.assertTrue({"Germany", "France", "Japan", "United States", "United Kingdom", "Ireland"}
                         <= set(self.f["markets_served"]["value"]))
@@ -58,6 +58,19 @@ class WebsiteOnlyTests(unittest.TestCase):
         self.assertEqual(fca["confidence"], "high")
         self.assertIn("FCA Firm Reference Number: 123456", fca["details"])
         self.assertIn("Prudential Regulation Authority (PRA), United Kingdom", self.f["regulator_or_licence"]["value"])
+
+    def test_offices_in_several_countries_are_operating_locations(self):
+        locations = self.f["operating_location"]["value"]
+        for office in ("200 Harbour Road, Leeds LS1 4AP, United Kingdom",          # contact page <address>
+                       "Beispielweg 5, 60311 Frankfurt am Main, Deutschland",      # office directory
+                       "2-2-2 Marunouchi, Chiyoda-ku, Tokyo 100-0005, Japan",
+                       "5 Dock Lane, Bristol, BS1 4ND, GB"):                       # JSON-LD subOrganization
+            self.assertIn(office, locations)
+        # the directory's London office is the head office already, not a second location
+        self.assertEqual(sum("1 Example Street" in v for v in locations), 1)
+        # a subOrganization in JSON-LD is another company: its name is not the site's legal name
+        self.assertFalse([c for c in self.f["registered_legal_name"]["candidates"]
+                          if any("subOrganization" in e["method"] for e in c["evidence"])])
 
     def test_website_alone_never_confirms_status_or_sector_ownership(self):
         self.assertEqual(self.f["entity_operating_status"]["status"], "inferred")
