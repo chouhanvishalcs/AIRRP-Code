@@ -43,6 +43,26 @@ row, `--subsidiaries-csv` one row per subsidiary.
 Needs outbound HTTPS to the organisation's site and, for the registry cross-check, to `api.gleif.org`
 (`--no-registry` to skip it). In a restricted network, allow those hosts.
 
+## When a site refuses automated requests
+
+Large corporate sites (Sony's among them) often sit behind bot protection that answers a script with HTTP 403. The
+terminal then says so (`note: No page could be fetched: https://…: HTTP 403.`) and lists the ways round it:
+
+1. **`--render`**: fetch with a real browser (Chromium through Playwright). One-time setup: `pip install playwright`,
+   then `python -m playwright install chromium`. Pages the server refuses to the script are retried in the browser,
+   and pages built with JavaScript are rendered.
+2. **`--from-files`**: open the pages in your own browser and save each one (Ctrl+S, "Webpage, HTML only") into a
+   folder. Useful pages are the home page, corporate data / company profile, legal notice / terms, investor relations,
+   and contact / locations. Then run:
+   `python -m airrp_entity profile --from-files C:\path\to\folder --out sony.json --markdown sony.md`.
+   Each page's address comes from the "saved from url" comment that Chrome and Edge write, else its canonical link.
+   Links between the saved pages are not followed, so save every page you want read.
+3. **Registry only**: `--lei <LEI>` or `--name "Sony Group Corporation"` gives the registry fields and the
+   subsidiaries without reading the website at all. The options combine, e.g.
+   `--from-files folder --name "Sony Group Corporation" --subsidiaries-csv subs.csv`.
+
+CSV files are written as UTF-8 with a byte-order mark, so Excel shows Japanese and other non-Latin names correctly.
+
 ## What each field is built from
 
 | Field | From the website | From the registry (GLEIF) |
@@ -136,12 +156,13 @@ which are natural next adapters (`gleif.py` is the template).
 ## Politeness and limits
 
 * Fetches at most `--max-pages` (25) pages per organisation, one request per host per `--delay` (1 s), honours
-  `robots.txt`, identifies itself with a descriptive User-Agent (`--user-agent` to change it), stays on the
+  `robots.txt` as RFC 9309 defines it (a 4xx answer for robots.txt means no restrictions, a 5xx answer means none
+  allowed), identifies itself with a descriptive User-Agent (`--user-agent` to change it), stays on the
   organisation's own domain(s) (`--also-domain` adds more), and follows the most relevant links first (legal notice,
   corporate data, IR, regulatory, contact, region selector). News, products, careers and shop pages are skipped.
 * PDFs (annual reports, Form 20-F, securities reports, licences) are listed under `documents_for_review`, not parsed.
 * Sites that build their pages with JavaScript give little text; the notes say so. Re-run with `--render`
-  (`pip install playwright`). Some sites refuse automated clients outright; those pages appear under `skipped`.
+  (`pip install playwright`, then `python -m playwright install chromium`). Some sites refuse automated clients outright; those pages appear under `skipped`.
 * Label recognition covers English, German, French, Spanish, Italian, Dutch and Japanese corporate-page wording.
   Industry and activity keywords are English (plus a few Japanese terms). Extend `airrp_entity/data/*.json`: the
   code reads them at start-up.
@@ -171,5 +192,5 @@ which are natural next adapters (`gleif.py` is the template).
 }
 ```
 
-Tests: `python -m unittest tests.test_entity_identifiers tests.test_entity_profile tests.test_entity_subsidiaries tests.test_entity_cli`. They run
+Tests: `python -m unittest tests.test_entity_identifiers tests.test_entity_profile tests.test_entity_subsidiaries tests.test_entity_cli tests.test_entity_access`. They run
 offline against fictional sites in `tests/fixtures/entity_sites/` and a local HTTP server.

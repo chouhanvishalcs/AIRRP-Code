@@ -82,9 +82,11 @@ class LocalServerTests(unittest.TestCase):
         self.assertIn({"url": self.base + "/private/secret/", "reason": "disallowed by robots.txt"}, p["skipped"])
         with open(md, encoding="utf-8") as fh:
             self.assertIn("# Entity profile: Northwind Example Holdings plc", fh.read())
-        with open(row, encoding="utf-8") as fh:
+        with open(row, encoding="utf-8-sig") as fh:
             self.assertEqual(next(csv.DictReader(fh))["registered_legal_name"], "Northwind Example Holdings plc")
-        with open(subs, encoding="utf-8") as fh:            # no registry: no subsidiaries, just the header
+        with open(subs, "rb") as fh:                        # BOM: Excel then reads the CSV as UTF-8
+            self.assertTrue(fh.read().startswith(b"\xef\xbb\xbf"))
+        with open(subs, encoding="utf-8-sig") as fh:        # no registry: no subsidiaries, just the header
             self.assertEqual([r for r in csv.reader(fh)][0][:3], ["lei", "name", "relation"])
 
     def test_batch_command(self):
@@ -94,7 +96,7 @@ class LocalServerTests(unittest.TestCase):
         out_dir = os.path.join(self.tmp, "batch")
         code = main(["batch", listing, "--out-dir", out_dir, "--no-registry", "--delay", "0", "--timeout", "2", "--quiet"])
         self.assertEqual(code, 1)                                  # one organisation could not be fetched
-        with open(os.path.join(out_dir, "summary.csv"), encoding="utf-8") as fh:
+        with open(os.path.join(out_dir, "summary.csv"), encoding="utf-8-sig") as fh:
             rows = list(csv.DictReader(fh))
         self.assertEqual([r["registered_legal_name"] for r in rows], ["Northwind Example Holdings plc", ""])
         self.assertTrue(os.path.exists(os.path.join(out_dir, "northwind.json")))

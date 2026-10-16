@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from datetime import date, datetime, timezone
 from urllib.parse import urlsplit
 
 from . import __version__
 from . import knowledge as kb
-from .crawl import crawl
+from .crawl import CrawlResult, crawl, pages_from_files
 from .extract import SiteContext, extract_website
 from .fetch import Fetcher
 from .gleif import GleifClient, canonical_name, group_overview, record_names
@@ -154,14 +155,45 @@ def _derive(cands: list[Candidate]) -> list[Candidate]:
     return out
 
 
-def _site_evidence(urls, fetcher, max_pages, extra_domains, renderer, log, today):
-    """Crawl one organisation's site and turn its pages into candidates: (crawl result, candidates, identifiers, notes)."""
-    result = crawl(urls, fetcher, max_pages=max_pages, extra_domains=extra_domains, renderer=renderer, log=log)
+def _fetch_advice(skipped: list[dict], rendered: bool) -> list[str]:
+    """What to do when no page could be fetched, from the reasons the requests failed."""
+    reasons = " ".join(s["reason"] for s in skipped)
+    out = ["No page could be fetched: " + "; ".join(f"{s['url']}: {s['reason']}" for s in skipped[:3]) + "."]
+    if re.search(r"HTTP (?:401|403|405|406|429|503)", reasons):
+        out.append("The site refused the request (it blocks automated clients). Options: "
+                   + ("" if rendered else "--render (fetch with a real browser: pip install playwright, then "
+                      "python -m playwright install chromium); ")
+                   + "or save the pages in your browser (Ctrl+S, 'Webpage, HTML only') and run with --from-files; "
+                   "and the registry part works without the website: --lei <LEI> or --name \"<legal name>\".")
+    if re.search(r"CERTIFICATE_VERIFY_FAILED|SSL", reasons):
+        out.append("The HTTPS certificate could not be verified. On a company network that inspects HTTPS, set "
+                   "SSL_CERT_FILE to your company's root certificate (PEM file) and run again.")
+    if re.search(r"timed out|getaddrinfo|Name or service|nodename|No route|refused|unreachable|URLError", reasons, re.I):
+        out.append("The site could not be reached from this network: check the internet connection or the proxy "
+                   "(HTTPS_PROXY), or use --from-files with pages saved in your browser.")
+    if "robots.txt" in reasons:
+        out.append("The site's robots.txt does not allow automated access to these pages; use --from-files with pages "
+                   "saved in your browser, or --lei / --name for the registry part.")
+    return out
+
+
+def _site_evidence(urls, fetcher, max_pages, extra_domains, renderer, log, today, files=None):
+    """Crawl one organisation's site (or read pages saved from a browser) and turn the pages into candidates:
+    (crawl result, candidates, identifiers, notes)."""
+    if files:
+        result = pages_from_files(files)
+        urls = urls or [p.final_url for p in result.pages if p.final_url.startswith("http")][:1]
+    elif urls:
+        result = crawl(urls, fetcher, max_pages=max_pages, extra_domains=extra_domains, renderer=renderer, log=log)
+    else:
+        result = CrawlResult()
     cands, identifiers = extract_website(result.pages, SiteContext(urls, result.site_keys, today))
     notes = []
-    if not result.pages:
-        notes.append("No page could be fetched (see 'skipped'): the site may block automated requests, need a "
-                     "browser (--render), or be unreachable from this network.")
+    if not result.pages and (urls or files):
+        notes += _fetch_advice(result.skipped, bool(renderer)) if result.skipped else [
+            "No page could be read" + (" from the files given." if files else ".")]
+    elif not result.pages:
+        notes.append("No website given: registry data only.")
     elif sum(len(p.parsed.text) for p in result.pages) / len(result.pages) < 300 and not renderer:
         notes.append("The fetched pages contain very little text; the site may build its pages with JavaScript. "
                      "Re-run with --render (needs Playwright).")
@@ -270,11 +302,16 @@ def _subsidiaries(client, parent, sites, *, fetcher, max_subsidiaries, crawl_lim
 def build_profile(urls: list[str], *, fetcher: Fetcher | None = None, max_pages: int = 25, registry: bool = True,
                   extra_domains=(), renderer=None, lei: str | None = None, log=None, today: date | None = None,
                   gleif_api: str | None = None, subsidiaries: bool = True, max_subsidiaries: int = 1000,
-                  crawl_subsidiaries: int = 0, subsidiary_pages: int = 8, subsidiary_sites=()) -> dict:
+                  crawl_subsidiaries: int = 0, subsidiary_pages: int = 8, subsidiary_sites=(), files=None,
+                  names=()) -> dict:
+    """Profile one organisation from its website `urls` (or browser-saved pages `files`), the GLEIF registry (found
+    through an LEI on the site, `lei`, the site's legal name, or `names`) and its subsidiaries."""
     urls = [u if "://" in u else "https://" + u for u in urls]
     fetcher = fetcher or Fetcher()
     today = today or date.today()
-    result, cands, identifiers, notes = _site_evidence(urls, fetcher, max_pages, extra_domains, renderer, log, today)
+    result, cands, identifiers, notes = _site_evidence(urls, fetcher, max_pages, extra_domains, renderer, log, today,
+                                                       files=files)
+    urls = urls or [p.final_url for p in result.pages][:1]
     registry_summary = subsidiaries_summary = record = client = None
 
     if registry:
@@ -282,7 +319,8 @@ def build_profile(urls: list[str], *, fetcher: Fetcher | None = None, max_pages:
         leis = [lei] if lei else []
         leis += [i.value for i, _ in identifiers if i.scheme == "LEI" and i.value not in leis]
         jurs = [g.members[0].key.split(":", 1)[1] for g in _strong_values(cands, "registration_jurisdiction")]
-        record, matched_by, reg_notes = registry_lookup(client, leis, _legal_names(cands), jurs)
+        record, matched_by, reg_notes = registry_lookup(client, leis, list(dict.fromkeys([*names, *_legal_names(cands)])),
+                                                        jurs)
         notes += reg_notes
         if record:
             reg_cands, registry_summary = registry_candidates(record, client, matched_by)
@@ -308,7 +346,8 @@ def build_profile(urls: list[str], *, fetcher: Fetcher | None = None, max_pages:
         "schema": SCHEMA,
         "tool": {"name": "airrp-entity", "version": __version__},
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "input": {"urls": urls, "max_pages": max_pages, "registry": registry, "lei": lei},
+        "input": {"urls": urls, "files": list(files or []), "names": list(names), "max_pages": max_pages,
+                  "registry": registry, "lei": lei},
         "summary": {k: fields[k]["value"] for k, _, _ in FIELDS},
         "fields": fields,
         "registry": registry_summary,
@@ -330,7 +369,7 @@ def _cell(v) -> str:
 
 def to_markdown(profile: dict) -> str:
     f = profile["fields"]
-    name = f["registered_legal_name"]["value"] or profile["input"]["urls"][0]
+    name = f["registered_legal_name"]["value"] or (profile["input"]["urls"] or ["(no website)"])[0]
     sites = ", ".join(dict.fromkeys(urlsplit(p["url"]).netloc for p in profile["pages"])) or "no site"
     reg = profile["registry"]
     out = [f"# Entity profile: {name}", "",

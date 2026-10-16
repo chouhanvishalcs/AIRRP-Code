@@ -69,6 +69,7 @@ class Fetcher:
         self.user_agent, self.delay, self.timeout, self.max_bytes = user_agent, delay, timeout, max_bytes
         self.respect_robots, self.accept_language = respect_robots, accept_language
         self._robots: dict[str, urllib.robotparser.RobotFileParser | None] = {}
+        self._robots_note: dict[str, str] = {}
         self._last: dict[str, float] = {}
         self.requests = 0
 
@@ -79,11 +80,12 @@ class Fetcher:
         if origin not in self._robots:
             rp = urllib.robotparser.RobotFileParser(origin + "/robots.txt")
             r = self._get(origin + "/robots.txt", "text/plain,*/*")
-            if r.error and r.status == 0:
-                rp = None                      # unreachable: decided by the page request itself
-            elif r.status in (401, 403):
+            if r.status == 0:
+                rp = None                      # unreachable: the page request itself reports why
+            elif r.status >= 500:              # RFC 9309 2.3.1.4: server error -> assume complete disallow
                 rp.disallow_all = True
-            elif r.status >= 400:
+                self._robots_note[origin] = f"robots.txt unavailable (HTTP {r.status}): treated as disallow-all"
+            elif r.status >= 400:              # RFC 9309 2.3.1.3: 4xx (401/403 too) -> no restrictions
                 rp.allow_all = True
             else:
                 rp.parse(r.text().splitlines())
@@ -103,7 +105,8 @@ class Fetcher:
     # -- requests
     def get(self, url: str, accept: str = HTML_ACCEPT, check_robots: bool = True) -> Response:
         if check_robots and not self.allowed(url):
-            return Response(url, 0, "", b"", error="disallowed by robots.txt")
+            origin = "{0.scheme}://{0.netloc}".format(urlsplit(url))
+            return Response(url, 0, "", b"", error=self._robots_note.get(origin, "disallowed by robots.txt"))
         return self._get(url, accept)
 
     def _get(self, url: str, accept: str) -> Response:
@@ -149,24 +152,33 @@ class Fetcher:
 class BrowserRenderer:
     """Optional: render JavaScript-built pages with Playwright (pip install playwright). Used only on request."""
 
-    def __init__(self, user_agent: str, timeout: float = 30.0):
+    def __init__(self, timeout: float = 30.0, locale: str = "en-US"):
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:
-            raise RuntimeError("--render needs Playwright: pip install playwright") from exc
+            raise RuntimeError("--render needs Playwright: pip install playwright, then: "
+                               "python -m playwright install chromium") from exc
         import os
         self._pw = sync_playwright().start()
         exe = os.environ.get("CHROMIUM_PATH")      # otherwise Playwright's own browser (PLAYWRIGHT_BROWSERS_PATH)
-        self._browser = self._pw.chromium.launch(**({"executable_path": exe} if exe else {}))
-        self._context = self._browser.new_context(user_agent=user_agent)
+        try:
+            self._browser = self._pw.chromium.launch(**({"executable_path": exe} if exe else {}))
+        except Exception as exc:  # noqa: BLE001 - usually the browser has not been downloaded yet
+            self._pw.stop()
+            raise RuntimeError(f"could not start Chromium for --render ({exc}). Run: python -m playwright install "
+                               "chromium") from exc
+        self._context = self._browser.new_context(locale=locale)   # the browser identifies itself as what it is
         self.timeout_ms = int(timeout * 1000)
 
-    def render(self, url: str) -> str | None:
+    def render(self, url: str) -> tuple[str, str] | None:
+        """(html, final url) of the page as a browser shows it, or None if the browser could not load it."""
         page = self._context.new_page()
         try:
-            page.goto(url, wait_until="networkidle", timeout=self.timeout_ms)
-            return page.content()
-        except Exception:      # noqa: BLE001 - a failed render falls back to the static HTML
+            resp = page.goto(url, wait_until="networkidle", timeout=self.timeout_ms)
+            if resp is not None and resp.status >= 400:
+                return None
+            return page.content(), page.url
+        except Exception:      # noqa: BLE001 - a failed render falls back to the static result
             return None
         finally:
             page.close()

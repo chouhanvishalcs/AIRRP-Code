@@ -12,6 +12,8 @@ from .fetch import DEFAULT_USER_AGENT, BrowserRenderer, Fetcher
 from .model import FIELDS
 from .profile import build_profile, to_csv, to_markdown, to_subsidiaries_csv
 
+CSV_ENCODING = "utf-8-sig"      # with a byte-order mark, so Excel shows non-Latin names correctly
+
 
 def _common(p):
     p.add_argument("--max-pages", type=int, default=25, help="pages to fetch per organisation (default 25)")
@@ -47,9 +49,18 @@ def _fetcher(a):
     return Fetcher(user_agent=a.user_agent, delay=a.delay, timeout=a.timeout, accept_language=a.lang)
 
 
-def _run(a, urls, fetcher, renderer, lei=None):
+def _renderer(a):
+    if not a.render:
+        return None
+    try:
+        return BrowserRenderer(timeout=max(a.timeout, 30))
+    except RuntimeError as exc:
+        raise SystemExit(f"airrp-entity: {exc}") from None
+
+
+def _run(a, urls, fetcher, renderer, lei=None, files=None, names=()):
     log = None if a.quiet else (lambda m: print(m, file=sys.stderr))
-    return build_profile(urls, fetcher=fetcher, max_pages=a.max_pages, registry=not a.no_registry,
+    return build_profile(urls, files=files, names=names, fetcher=fetcher, max_pages=a.max_pages, registry=not a.no_registry,
                          extra_domains=a.also_domain, renderer=renderer, lei=lei, log=log,
                          subsidiaries=not a.no_subsidiaries, max_subsidiaries=a.max_subsidiaries,
                          crawl_subsidiaries=a.crawl_subsidiaries, subsidiary_pages=a.subsidiary_pages,
@@ -73,9 +84,13 @@ def _print_summary(profile):
 
 
 def cmd_profile(a):
-    renderer = BrowserRenderer(a.user_agent) if a.render else None
+    if not (a.urls or a.from_files or a.lei or a.name):
+        print("airrp-entity profile: give the organisation's website URL, or --from-files, --lei or --name",
+              file=sys.stderr)
+        return 2
+    renderer = _renderer(a)
     try:
-        profile = _run(a, a.urls, _fetcher(a), renderer, lei=a.lei)
+        profile = _run(a, a.urls, _fetcher(a), renderer, lei=a.lei, files=a.from_files, names=a.name)
     finally:
         if renderer:
             renderer.close()
@@ -86,14 +101,14 @@ def cmd_profile(a):
         with open(a.markdown, "w", encoding="utf-8") as fh:
             fh.write(to_markdown(profile))
     if a.csv:
-        with open(a.csv, "w", encoding="utf-8", newline="") as fh:
+        with open(a.csv, "w", encoding=CSV_ENCODING, newline="") as fh:
             fh.write(to_csv([profile]))
     if a.subsidiaries_csv:
-        with open(a.subsidiaries_csv, "w", encoding="utf-8", newline="") as fh:
+        with open(a.subsidiaries_csv, "w", encoding=CSV_ENCODING, newline="") as fh:
             fh.write(to_subsidiaries_csv(profile))
     if not a.quiet:
         _print_summary(profile)
-    return 0 if profile["pages"] else 1
+    return 0 if profile["pages"] or profile["registry"] else 1
 
 
 def _slug(s):
@@ -107,7 +122,7 @@ def cmd_batch(a):
         print("input CSV needs a 'url' column (optional: 'name', 'lei'; several URLs separated by spaces)", file=sys.stderr)
         return 2
     os.makedirs(a.out_dir, exist_ok=True)
-    fetcher, renderer = _fetcher(a), (BrowserRenderer(a.user_agent) if a.render else None)
+    fetcher, renderer = _fetcher(a), _renderer(a)
     profiles, failed = [], 0
     try:
         for row in rows:
@@ -124,7 +139,7 @@ def cmd_batch(a):
             with open(base + ".md", "w", encoding="utf-8") as fh:
                 fh.write(to_markdown(profile))
             if (profile.get("subsidiaries") or {}).get("entities"):
-                with open(base + "-subsidiaries.csv", "w", encoding="utf-8", newline="") as fh:
+                with open(base + "-subsidiaries.csv", "w", encoding=CSV_ENCODING, newline="") as fh:
                     fh.write(to_subsidiaries_csv(profile))
             if not a.quiet:
                 print(f"{urls[0]}: {profile['summary']['registered_legal_name'] or '(legal name not found)'} -> {base}.json",
@@ -132,17 +147,27 @@ def cmd_batch(a):
     finally:
         if renderer:
             renderer.close()
-    with open(os.path.join(a.out_dir, "summary.csv"), "w", encoding="utf-8", newline="") as fh:
+    with open(os.path.join(a.out_dir, "summary.csv"), "w", encoding=CSV_ENCODING, newline="") as fh:
         fh.write(to_csv(profiles))
     print(f"{len(profiles)} organisation(s), {failed} without any fetched page; summary: {os.path.join(a.out_dir, 'summary.csv')}")
     return 0 if profiles and not failed else 1
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):    # a Windows console or redirect may not encode Japanese names etc.
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(prog="airrp-entity", description="Evidence-backed entity profile from public websites.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("profile", help="profile one organisation (give its home page; add more URLs of the same organisation)")
-    p.add_argument("urls", nargs="+", help="e.g. https://www.sony.com/en/ (extra URLs: legal notice, corporate data page)")
+    p.add_argument("urls", nargs="*", help="e.g. https://www.sony.com/en/ (extra URLs: legal notice, corporate data page)")
+    p.add_argument("--from-files", nargs="+", metavar="PATH",
+                   help="read pages saved from your browser (HTML files or folders) instead of fetching the site")
+    p.add_argument("--name", action="append", default=[],
+                   help="exact registered legal name to look up in the GLEIF registry (repeatable), e.g. when the "
+                        "website cannot be read")
     p.add_argument("--out", help="write the full profile (values + evidence) as JSON")
     p.add_argument("--markdown", help="write a readable report")
     p.add_argument("--csv", help="write one summary row as CSV")

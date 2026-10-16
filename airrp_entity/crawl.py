@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import hashlib
 import heapq
+import os
+import pathlib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
-from .fetch import Fetcher
+from .fetch import Fetcher, decode
 from .htmlparse import ParsedPage, parse_html
 
 # second-level public suffixes, enough to find the registrable domain of most corporate sites
@@ -151,19 +153,6 @@ def crawl(seeds, fetcher: Fetcher, max_pages: int = 25, extra_domains=(), render
             doc_seen.add(n)
             res.documents.append({"url": url, "text": text, "found_on": found_on})
 
-    brands = {brand_token(k) for k in res.site_keys if len(brand_token(k)) >= 4}
-    related_seen: set[str] = set()
-
-    def add_related(url, text, found_on):
-        """A link to another domain whose name starts with the organisation's brand (sony.co.uk, sonypictures.com):
-        usually a country site or a subsidiary. Recorded, not crawled."""
-        p = urlsplit(url)
-        key = site_key(p.hostname or "")
-        if (p.scheme in ("http", "https") and key not in res.site_keys and key not in related_seen
-                and any(brand_token(key).startswith(b) for b in brands) and len(res.related_sites) < 300):
-            related_seen.add(key)
-            res.related_sites.append({"url": url, "site": key, "text": " ".join(text.split())[:80], "found_on": found_on})
-
     def drain():
         while heap and len(res.pages) < max_pages:
             _, depth, _, url, via = heapq.heappop(heap)
@@ -179,44 +168,48 @@ def crawl(seeds, fetcher: Fetcher, max_pages: int = 25, extra_domains=(), render
             if log:
                 log(f"fetch {url}")
             resp = fetcher.get(url)
-            if not resp.ok:
-                res.skipped.append({"url": url, "reason": resp.error or f"HTTP {resp.status}"})
+            rendered = None
+            if not resp.ok and renderer and resp.status >= 400:    # refused by the server: try a real browser
+                rendered = renderer.render(url)
+            if not resp.ok and not rendered:
+                res.skipped.append({"url": url, "reason": (resp.error or f"HTTP {resp.status}")
+                                    + (" (also refused to the browser)" if renderer and resp.status >= 400 else "")})
                 continue
-            final = normalize_url(resp.url)
+            final_url = rendered[1] if rendered else resp.url
+            final = normalize_url(final_url)
             if final != norm:
                 if final in seen and depth:
                     continue
                 seen.add(final)
             if depth == 0:          # a seed may redirect to the organisation's main domain (e.g. brand.net -> brand.com)
-                res.site_keys.add(site_key(urlsplit(resp.url).hostname or ""))
-            elif not in_scope(resp.url):
-                res.skipped.append({"url": url, "reason": f"redirected off-site to {resp.url}"})
+                res.site_keys.add(site_key(urlsplit(final_url).hostname or ""))
+            elif not in_scope(final_url):
+                res.skipped.append({"url": url, "reason": f"redirected off-site to {final_url}"})
                 continue
-            if resp.content_type == "application/pdf":
+            if not rendered and resp.content_type == "application/pdf":
                 add_document(resp.url, via, "")
                 continue
-            if not resp.is_html:
+            if not rendered and not resp.is_html:
                 res.skipped.append({"url": url, "reason": f"not HTML ({resp.content_type or 'unknown type'})"})
                 continue
-            parsed = parse_html(resp.text(), resp.url)
-            rendered = False
-            if renderer and (len(parsed.text) < 600 or len(parsed.links) < 5):
-                html = renderer.render(resp.url)
-                if html:
-                    parsed, rendered = parse_html(html, resp.url), True
-            res.pages.append(FetchedPage(url, resp.url, resp.status, depth, page_kind(resp.url, parsed.title, depth),
-                                         parsed, hashlib.sha256(resp.body).hexdigest(),
-                                         datetime.now(timezone.utc).isoformat(timespec="seconds"), rendered))
+            body = rendered[0].encode("utf-8") if rendered else resp.body
+            parsed = parse_html(rendered[0] if rendered else resp.text(), final_url)
+            if renderer and not rendered and (len(parsed.text) < 600 or len(parsed.links) < 5):
+                rendered = renderer.render(final_url)          # little text: probably built by JavaScript
+                if rendered:
+                    final_url, body = rendered[1], rendered[0].encode("utf-8")
+                    parsed = parse_html(rendered[0], final_url)
+            res.pages.append(FetchedPage(url, final_url, resp.status if resp.ok else 200, depth,
+                                         page_kind(final_url, parsed.title, depth), parsed,
+                                         hashlib.sha256(body).hexdigest(),
+                                         datetime.now(timezone.utc).isoformat(timespec="seconds"), bool(rendered)))
             for link in parsed.links:
                 score = link_score(link.url, link.text, seed_locale)
                 if is_document(link.url):
                     if in_scope(link.url) and (DOC_HINT.search(link.url + " " + link.text) or score >= 2):
-                        add_document(link.url, link.text, resp.url)
+                        add_document(link.url, link.text, final_url)
                     continue
-                if not in_scope(link.url):
-                    add_related(link.url, link.text, resp.url)
-                    continue
-                if normalize_url(link.url) in seen:
+                if not in_scope(link.url) or normalize_url(link.url) in seen:
                     continue
                 if (depth == 0 and score >= 2) or (depth == 1 and score >= 3):
                     push(link.url, depth + 1, score, link.text)
@@ -235,6 +228,66 @@ def crawl(seeds, fetcher: Fetcher, max_pages: int = 25, extra_domains=(), render
             for path in WELL_KNOWN:
                 push(urljoin(base, prefix + path), 1, 2, "well-known path")
         drain()
+    res.related_sites = related_sites(res.pages, res.site_keys)
+    return res
+
+
+def related_sites(pages: list[FetchedPage], site_keys: set[str], limit: int = 300) -> list[dict]:
+    """Links to other domains whose name starts with the organisation's brand (sony.co.uk, sonypictures.com): usually
+    country sites or subsidiaries. Listed for --crawl-subsidiaries, never crawled as part of the organisation."""
+    brands = {brand_token(k) for k in site_keys if len(brand_token(k)) >= 4}
+    out, seen = [], set()
+    for page in pages:
+        for link in page.parsed.links:
+            p = urlsplit(link.url)
+            key = site_key(p.hostname or "")
+            if (p.scheme in ("http", "https") and key not in site_keys and key not in seen
+                    and any(brand_token(key).startswith(b) for b in brands)):
+                seen.add(key)
+                out.append({"url": link.url, "site": key, "text": " ".join(link.text.split())[:80],
+                            "found_on": page.final_url})
+    return out[:limit]
+
+
+SAVED_FROM = re.compile(r"<!--\s*saved from url=\(\d+\)\s*(\S+?)\s*-->", re.I)
+HTML_FILES = (".html", ".htm", ".xhtml")
+
+
+def pages_from_files(paths) -> CrawlResult:
+    """Pages saved from a browser (File > Save page as), for sites that refuse automated requests. A page's address is
+    taken from the browser's 'saved from url' comment, else its canonical link or og:url, else the file itself."""
+    files = []
+    for path in paths:
+        if os.path.isdir(path):
+            files += sorted(os.path.join(d, f) for d, _, names in os.walk(path) for f in names
+                            if f.lower().endswith(HTML_FILES))
+        else:
+            files.append(path)
+    res = CrawlResult()
+    for i, path in enumerate(files):
+        with open(path, "rb") as fh:
+            body = fh.read()
+        html = decode(body)
+        first = parse_html(html, "https://localhost/")
+        m = SAVED_FROM.search(html[:4096])
+        found = [m.group(1) if m else None, first.meta.get("canonical"), first.meta.get("og:url")]
+        url = next((u for u in found if u and re.match(r"https?://(?!localhost/)", u)), None) \
+            or pathlib.Path(path).resolve().as_uri()
+        parsed = parse_html(html, url)
+        parts = urlsplit(url)
+        depth = 0 if parts.path.strip("/") in ("", _locale_of(url) or "") and parts.scheme != "file" else 1
+        mtime = datetime.fromtimestamp(os.path.getmtime(path), timezone.utc).isoformat(timespec="seconds")
+        res.pages.append(FetchedPage(path, url, 200, depth, page_kind(url, parsed.title + " " + os.path.basename(path), depth),
+                                     parsed, hashlib.sha256(body).hexdigest(), mtime))
+        if parts.scheme in ("http", "https"):
+            res.site_keys.add(site_key(parts.hostname or ""))
+    seen = set()
+    for page in res.pages:
+        for link in page.parsed.links:
+            if is_document(link.url) and DOC_HINT.search(link.url + " " + link.text) and link.url not in seen:
+                seen.add(link.url)
+                res.documents.append({"url": link.url, "text": link.text, "found_on": page.final_url})
+    res.related_sites = related_sites(res.pages, res.site_keys)
     return res
 
 

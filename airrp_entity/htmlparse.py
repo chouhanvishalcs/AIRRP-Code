@@ -134,6 +134,8 @@ class _Parser(HTMLParser):
         if tag == "link":
             if "alternate" in a.get("rel", "").lower() and a.get("hreflang") and a.get("href"):
                 self.page.alternates.append((a["hreflang"].lower(), urljoin(self.base, a["href"])))
+            elif "canonical" in a.get("rel", "").lower() and a.get("href"):
+                self.page.meta.setdefault("canonical", urljoin(self.base, a["href"]))
             return
         if self.skip:
             return

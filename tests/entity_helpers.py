@@ -74,6 +74,8 @@ class FixtureFetcher(Fetcher):
         if url in self.routes:
             return Response(url, 200, "application/vnd.api+json", self.routes[url].encode("utf-8"), "utf-8")
         p = urlsplit(url)
+        if p.hostname == "www.blocked.example":          # a site that refuses every automated request
+            return Response(url, 403, "text/html", b"Access Denied", error="HTTP 403")
         site = HOSTS.get(p.hostname or "")
         if not site:
             return Response(url, 404, "", b"", error="HTTP 404")

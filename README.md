@@ -92,6 +92,9 @@ Details, sources per field and limits: [docs/ENTITY_PROFILE.md](docs/ENTITY_PROF
 python -m airrp_entity profile https://www.sony.com/en/ --out sony.json --markdown sony.md
 python -m airrp_entity profile https://www.sony.com/en/ --subsidiaries-csv sony-subsidiaries.csv --crawl-subsidiaries 30
 python -m airrp_entity batch examples/organisations.csv --out-dir profiles/      # columns: url, name, lei
+# site refuses scripts (HTTP 403)? use a real browser, pages saved from your browser, or the registry alone
+python -m airrp_entity profile https://www.sony.com/en/ --render
+python -m airrp_entity profile --from-files saved-pages/ --name "Sony Group Corporation"
 ```
 
 Tests: `python -m unittest discover -s tests -t .` (set `OSCAL_CATALOG=data/catalog.json` to also run the
