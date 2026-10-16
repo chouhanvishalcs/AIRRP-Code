@@ -1,20 +1,23 @@
 [project]
 name = "airrp-ingest"
 version = "0.1.0"
-description = "Deterministic import of control catalogs (NIST OSCAL) into the AIRRP master control repository"
+description = "Deterministic import of control catalogs (NIST OSCAL) into the AIRRP master control repository, and evidence-backed entity profiles from public websites"
 requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.1"]
 xlsx = ["openpyxl"]
+render = ["playwright"]
 dev = ["psycopg[binary]>=3.1", "pgserver", "jsonschema", "openpyxl", "playwright"]
 
 [project.scripts]
 airrp-ingest = "airrp_ingest.cli:main"
+airrp-entity = "airrp_entity.cli:main"
 
 [tool.setuptools]
-packages = ["airrp_ingest"]
+packages = ["airrp_ingest", "airrp_entity"]
 
 [tool.setuptools.package-data]
 airrp_ingest = ["vocab.json"]
+airrp_entity = ["data/*.json"]

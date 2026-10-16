@@ -1,0 +1,25 @@
+{"data": {"type": "lei-records", "id": "9845002SKRDENKI00040", "attributes": {
+  "lei": "9845002SKRDENKI00040",
+  "entity": {
+    "legalName": {"name": "さくら電機株式会社", "language": "ja"},
+    "otherNames": [{"name": "Sakura Denki Corporation", "language": "en", "type": "ALTERNATIVE_LANGUAGE_LEGAL_NAME"}],
+    "transliteratedOtherNames": [{"name": "SAKURA DENKI KABUSHIKI KAISHA", "language": "ja", "type": "AUTO_ASCII_TRANSLITERATED_LEGAL_NAME"}],
+    "legalAddress": {"language": "ja", "addressLines": ["港区港南1-2-3"], "addressNumber": null, "addressNumberWithinBuilding": null,
+                     "mailRouting": null, "city": "東京都", "region": "JP-13", "country": "JP", "postalCode": "108-0000"},
+    "headquartersAddress": {"language": "ja", "addressLines": ["港区港南1-2-3"], "city": "東京都", "region": "JP-13",
+                            "country": "JP", "postalCode": "108-0000"},
+    "registeredAt": {"id": "RA000412", "other": null},
+    "registeredAs": "3010401999999",
+    "jurisdiction": "JP",
+    "category": "GENERAL",
+    "legalForm": {"id": "T417", "other": null},
+    "status": "ACTIVE",
+    "expiration": {"date": null, "reason": null},
+    "successorEntity": {"lei": null, "name": null},
+    "otherAddresses": [{"type": "ALTERNATIVE_LANGUAGE_LEGAL_ADDRESS", "language": "en",
+                        "addressLines": ["1-2-3 Konan Example, Minato-ku"], "city": "Tokyo", "country": "JP", "postalCode": "108-0000"}]
+  },
+  "registration": {"initialRegistrationDate": "2013-01-07T00:00:00Z", "lastUpdateDate": "2026-01-10T00:00:00Z",
+                   "status": "ISSUED", "nextRenewalDate": "2026-12-31T00:00:00Z", "managingLou": "EXAMPLELOU00000000000",
+                   "corroborationLevel": "FULLY_CORROBORATED"}
+}}}

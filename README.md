@@ -79,5 +79,18 @@ python -m airrp_ingest prove ... --postgres postgresql://user:pass@host/db
 python -m airrp_ingest --db postgresql://user:pass@host/db import data/catalog.json --manifest ... --apply
 ```
 
+### Entity profile from public websites (`airrp_entity`)
+
+Registered legal name, registration reference, legal form, jurisdiction, registered office, operating locations,
+operating status, government/public-sector status, industry, markets, regulated activities and regulators/licences of an
+organisation, read from its own website with the page and words behind every value, and cross-checked against the
+public GLEIF LEI registry. Nothing is guessed: unsupported fields stay empty, disagreements are flagged for a person.
+Details, sources per field and limits: [docs/ENTITY_PROFILE.md](docs/ENTITY_PROFILE.md).
+
+```bash
+python -m airrp_entity profile https://www.sony.com/en/ --out sony.json --markdown sony.md
+python -m airrp_entity batch examples/organisations.csv --out-dir profiles/      # columns: url, name, lei
+```
+
 Tests: `python -m unittest discover -s tests -t .` (set `OSCAL_CATALOG=data/catalog.json` to also run the
 full-catalog tests; the storage tests run on SQLite and, when `pgserver`+`psycopg` are installed, on PostgreSQL). Design and the rules the schema enforces: [docs/DESIGN.md](docs/DESIGN.md).
