@@ -359,74 +359,49 @@
       <div class="section-head">
         <span class="overline">Pricing</span>
         <h2 id="pricing-title">What you pay for, and why.</h2>
-        <p>AIRRP is licensed on the charging units below. The table shows what each unit covers, its term, any volume conditions and what is quoted separately. Your licence scope confirms which of the six capabilities are included — not every licence includes all six.</p>
+        <p>AIRRP is priced per program, per governed application and per governed third party, charged annually. Users and reassessments are unlimited. The capabilities included are confirmed in your licence scope.</p>
       </div>
-
-      <!-- PRICING-PREVIEW-NOTICE: remove once the approved pricing source has been applied -->
-      <p class="pricing-notice" data-preview-notice>
-        <svg aria-hidden="true"><use href="#i-info"/></svg>
-        <span><strong>Preview for content approval.</strong> Rows show the cost drivers already published on the AIRRP licensing page. Term, volume conditions and prices will be filled in from the approved AIRRP pricing source before release; no figures are shown until then.</span>
-      </p>
 
       <div class="price-table-wrap">
         <table class="price-table">
-          <caption class="visually-hidden">AIRRP charging units</caption>
+          <caption class="visually-hidden">AIRRP annual pricing by charging unit</caption>
           <thead>
-            <tr><th scope="col">Charging unit</th><th scope="col">What’s included</th><th scope="col" class="col-term">Term</th><th scope="col">Volume conditions</th><th scope="col" class="col-price">Price</th></tr>
+            <tr><th scope="col">Charging unit</th><th scope="col">Price</th><th scope="col">Charged per</th><th scope="col">Term</th></tr>
           </thead>
-          <!-- PRICING:START — populate every cell from the approved pricing source; do not invent tiers, discounts, minimums or allowances -->
+          <!-- PRICING:START — must match pricing.approved.json exactly (enforced by scripts/check-site.mjs). No minimum fees, vendor-volume discounts, new tiers or other conditions. -->
           <tbody>
-            <tr>
-              <th scope="row">Licensed capabilities</th>
-              <td data-label="What’s included">The AIRRP capabilities confirmed in your licence scope.</td>
-              <td data-label="Term" class="col-term"><span class="pending" data-pending>Approved term</span></td>
-              <td data-label="Volume conditions"><span class="pending" data-pending>Approved conditions</span></td>
-              <td data-label="Price" class="col-price"><span class="pending" data-pending>Approved price</span></td>
-            </tr>
-            <tr>
-              <th scope="row">Assessment capacity</th>
-              <td data-label="What’s included">The assessment workload included in your licence.</td>
-              <td data-label="Term" class="col-term"><span class="pending" data-pending>Approved term</span></td>
-              <td data-label="Volume conditions"><span class="pending" data-pending>Approved conditions</span></td>
-              <td data-label="Price" class="col-price"><span class="pending" data-pending>Approved price</span></td>
-            </tr>
-            <tr>
-              <th scope="row">Knowledge packages</th>
-              <td data-label="What’s included">The qualified regulatory and framework packages in scope, by named version.</td>
-              <td data-label="Term" class="col-term"><span class="pending" data-pending>Approved term</span></td>
-              <td data-label="Volume conditions"><span class="pending" data-pending>Approved conditions</span></td>
-              <td data-label="Price" class="col-price"><span class="pending" data-pending>Approved price</span></td>
-            </tr>
-            <tr>
-              <th scope="row">Users</th>
-              <td data-label="What’s included">The people and roles who work in AIRRP.</td>
-              <td data-label="Term" class="col-term"><span class="pending" data-pending>Approved term</span></td>
-              <td data-label="Volume conditions"><span class="pending" data-pending>Approved conditions</span></td>
-              <td data-label="Price" class="col-price"><span class="pending" data-pending>Approved price</span></td>
-            </tr>
-            <tr>
-              <th scope="row">Deployment and support</th>
-              <td data-label="What’s included">Provider-operated SaaS or customer-controlled deployment, with the agreed support terms.</td>
-              <td data-label="Term" class="col-term"><span class="pending" data-pending>Approved term</span></td>
-              <td data-label="Volume conditions"><span class="pending" data-pending>Approved conditions</span></td>
-              <td data-label="Price" class="col-price"><span class="pending" data-pending>Approved price</span></td>
-            </tr>
-            <tr class="row-separate">
-              <th scope="row">Implementation and onboarding assistance</th>
-              <td data-label="What’s included">Onboarding, migration of existing material and assisted rollout, when requested.</td>
-              <td data-label="Term" class="col-term"><span class="pending" data-pending>Approved term</span></td>
-              <td data-label="Volume conditions">—</td>
-              <td data-label="Price" class="col-price"><span class="quote-tag">Separate quotation</span></td>
-            </tr>
+            <tr data-unit><th scope="row">Common compliance programs</th><td class="price" data-label="Price">₹8,00,000</td><td data-label="Per">Program</td><td data-label="Term">Annually</td></tr>
+            <tr data-unit><th scope="row">Privacy, regulatory and specialised programs</th><td class="price" data-label="Price">₹10,00,000</td><td data-label="Per">Program</td><td data-label="Term">Annually</td></tr>
+            <tr data-unit><th scope="row">NIST SP 800-53</th><td class="price" data-label="Price">₹25,00,000</td><td data-label="Per">Program</td><td data-label="Term">Annually</td></tr>
+            <tr data-unit><th scope="row">Governed applications</th><td class="price" data-label="Price">₹10,000</td><td data-label="Per">Application</td><td data-label="Term">Annually</td></tr>
+            <tr data-unit><th scope="row">Governed third parties</th><td class="price" data-label="Price">₹20,000</td><td data-label="Per">Vendor</td><td data-label="Term">Annually</td></tr>
+            <tr class="row-separate" data-separate><th scope="row">Professional services</th><td class="price" data-label="Price" colspan="3"><span class="quote-tag">Quoted separately</span></td></tr>
           </tbody>
           <!-- PRICING:END -->
         </table>
       </div>
 
+      <div class="pricing-terms">
+        <div class="pricing-included">
+          <h3>Included</h3>
+          <ul>
+            <li>Unlimited users and reassessments.</li>
+            <li>No separate legal-entity fee, hidden platform fee or per-control, evidence, finding, risk or document charge.</li>
+          </ul>
+        </div>
+        <div class="pricing-discount" data-discount>
+          <span class="discount-figure" aria-hidden="true">20%</span>
+          <div>
+            <h3>Founding-customer discount</h3>
+            <p>20% on eligible compliance programs only.</p>
+          </div>
+        </div>
+      </div>
+
       <div class="pricing-ask">
         <div>
-          <h3>Need figures for your scope?</h3>
-          <p>Tell us which capabilities and how much assessment work you have in mind, and we’ll reply with the pricing that applies.</p>
+          <h3>Need a quote for your scope?</h3>
+          <p>Tell us how many programs, applications and third parties you plan to govern, and we’ll prepare your quote.</p>
         </div>
         <a class="btn btn-saffron" href="#contact" data-request="contact" data-topic="Pricing for our scope: ">Ask about pricing <svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
       </div>

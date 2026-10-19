@@ -8,7 +8,7 @@ A single, capability-led page built to the *AIRRP Website Build Brief V2 (Differ
 | 2 | Six capabilities | Six visible cards, each showing **what it does → how it works differently → why a customer would choose it → product proof**, plus the four-step workflow. The brief’s copy is used word for word. TPRM (*you assess your third parties*) and Questionnaire Assistance (*your customers assess you*) are kept visibly separate. |
 | 3 | One connected example | The Employee HR Management System scenario: understand once → determine obligations → assess and decide → reuse governed knowledge, ending with the visitor takeaway. Horizontal on desktop, vertical on mobile. The TPRM step is built but hidden until TPRM is verified. |
 | 4 | Why connected work matters | V2’s disconnected-vs-connected comparison table and commercial message, placed directly before Pricing. |
-| 5 | Pricing | Charging-unit table (what’s included, term, volume conditions, price) plus “Ask about pricing”. **Figures are pending (see below).** |
+| 5 | Pricing | The approved pricing (see below): five charging units with price, unit and annual term; professional services quoted separately; what is included; the founding-customer discount; “Ask about pricing”. |
 | 6 | Request Demo / Contact Us | One short form with a request-type switch; name, work email and organisation are required and the message is optional. |
 
 Look and feel: the midnight-teal gradient, mint accent and mint buttons of airrp.dsrdt.com, with **saffron** (`#FF9933`) for anything that means *talk to us* and for the section labels. The approved AIRRP logo (gold mark) comes from the brand assets. Inter is self-hosted (SIL OFL), so there are no third-party fonts, analytics or trackers. V2 asks for no unnecessary animation, so there is none beyond hover feedback.
@@ -70,9 +70,28 @@ If team delivery fails, the visitor sees an error and the email address, never a
 
 These are the same setting names the existing site uses. Until all the required ones are set, the button reads **Continue in email** and opens a pre-filled email to airrp@dsrdt.com, so it never does nothing.
 
-## Populating pricing (required before release)
+## Pricing
 
-Edit the rows between `<!-- PRICING:START -->` and `<!-- PRICING:END -->` in `public/index.html` to match the approved model exactly. Remove every `data-pending` placeholder and the `data-preview-notice` paragraph, then set `pricingApproved`. Until then, the check refuses any currency figure on the page.
+`pricing.approved.json` holds the pricing approved by the product owner (19 October 2026), and the table in `public/index.html` (between `PRICING:START` and `PRICING:END`) is written from it:
+
+| Charging unit | Price | Per | Term |
+| --- | --- | --- | --- |
+| Common compliance programs | ₹8,00,000 | Program | Annually |
+| Privacy, regulatory and specialised programs | ₹10,00,000 | Program | Annually |
+| NIST SP 800-53 | ₹25,00,000 | Program | Annually |
+| Governed applications | ₹10,000 | Application | Annually |
+| Governed third parties | ₹20,000 | Vendor | Annually |
+| Professional services | Quoted separately | | |
+
+Also shown, word for word: *Unlimited users and reassessments*; *No separate legal-entity fee, hidden platform fee or per-control, evidence, finding, risk or document charge*; *Founding-customer discount: 20% on eligible compliance programs only*.
+
+`npm run check` fails if:
+- any row differs from the JSON;
+- any other price appears anywhere on the page (so discounted figures are never worked out and shown);
+- a minimum, tier, volume discount or other percentage is added;
+- a required inclusion line is missing.
+
+To change pricing, update the JSON and the table together. No capability entitlements are attached to any charging unit. The page only says the included capabilities are confirmed in the licence scope.
 
 ## Release gates
 
@@ -80,7 +99,7 @@ Edit the rows between `<!-- PRICING:START -->` and `<!-- PRICING:END -->` in `pu
 
 | Gate | Owner confirms |
 | --- | --- |
-| `pricingApproved` | pricing matches the approved source exactly |
+| `pricingApproved` | the rendered pricing section matches the approved pricing (the table is generated from it and checked automatically; this is the owner’s final look) |
 | `tprmEndToEndValidated` | TPRM end-to-end test passed. Only then add the TPRM capture and show connected-example step 5 (remove its `hidden`). |
 | `productProofApproved` | all six proof captures are genuine, use synthetic/redacted data and are approved for publication |
 | `connectedExampleVerified` | the HR system example is an actually tested AIRRP scenario and the steps match what the product does |

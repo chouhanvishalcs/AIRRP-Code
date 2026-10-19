@@ -86,7 +86,6 @@ for (const [re, why] of [
   [/\b(vanta|drata|onetrust|servicenow|archer|logicgate)\b/i, 'competitor name'],
   [/\b(testimonial|blog|case study|lorem|todo|tbd)\b/i, 'excluded or placeholder content'],
   [/how airrp works|ai[- ]powered/i, 'phrase the brief rules out'],
-  [gates.pricingApproved === true ? null : /[₹$€£]\s?\d/, 'numeric price before pricingApproved is set'],
 ]) {
   if (!re) continue;
   const m = visible.match(re);
@@ -125,7 +124,29 @@ for (const [, body] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
   check(headers.includes(`'sha256-${hash}'`), `_headers CSP is missing 'sha256-${hash}' for an inline script`);
 }
 
-// 5 & 7. Pricing source and release gates.
+// 8. Pricing integrity: the table must match pricing.approved.json exactly and no other price may appear.
+const approved = JSON.parse(readFileSync(join(root, 'pricing.approved.json'), 'utf8'));
+const pricing = html.match(/<section[^>]*id="pricing"[\s\S]*?<\/section>/)?.[0] ?? '';
+const pricingText = text(pricing);
+const rows = [...pricing.matchAll(/<tr data-unit>([\s\S]*?)<\/tr>/g)].map(([, r]) => {
+  const [name, price, per, term] = [...r.matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/g)].map((m) => text(m[1]));
+  return { name, price, per, term };
+});
+check(JSON.stringify(rows) === JSON.stringify(approved.chargingUnits),
+  `pricing table differs from pricing.approved.json\n      table:    ${JSON.stringify(rows)}\n      approved: ${JSON.stringify(approved.chargingUnits)}`);
+const separate = text(pricing.match(/<tr[^>]*data-separate[^>]*>([\s\S]*?)<\/tr>/)?.[1] ?? '');
+check(separate.startsWith(approved.quotedSeparately) && /quoted separately/i.test(separate), `pricing must show "${approved.quotedSeparately}" as quoted separately`);
+check(pricingText.includes(approved.discount.title) && pricingText.includes(approved.discount.text), 'founding-customer discount must appear exactly as approved');
+for (const line of approved.included) check(pricingText.includes(line), `pricing must state: "${line}"`);
+const approvedPrices = approved.chargingUnits.map((u) => u.price);
+const figures = visible.match(/₹\s?[\d,]+/g) ?? [];
+check(JSON.stringify(figures) === JSON.stringify(approvedPrices), `only the approved prices may appear on the page, found: ${figures.join(', ') || 'none'}`);
+check(!/[$€£]\s?\d/.test(visible), 'no non-INR price figures');
+check(!/\b(minimum|volume discount|tiers?|set-?up fee|per user|per seat)\b/i.test(pricingText), 'pricing must not add minimums, tiers, volume discounts or other conditions');
+const percents = pricingText.match(/\d+\s?%/g) ?? [];
+check(percents.every((x) => x.replace(/\s/g, '') === '20%'), `unexpected percentage in pricing: ${percents.join(', ')}`);
+
+// Release gates and anything still pending.
 const pending = (html.match(/data-pending\b(?!-)/g) ?? []).length;
 const pendingProof = (html.match(/data-pending-proof/g) ?? []).length;
 const notice = html.includes('data-preview-notice');
