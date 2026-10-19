@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://airrp.dsrdt.com/sitemap.xml
