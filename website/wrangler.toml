@@ -1,0 +1,9 @@
+# Production: replaces the Worker that serves airrp.dsrdt.com. Deploy the preview first (wrangler.preview.toml).
+name = "airrp-website"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "404-page"

@@ -1,0 +1,17 @@
+{
+  "name": "airrp-website-focused",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node scripts/check-site.mjs",
+    "check:release": "node scripts/check-site.mjs --release",
+    "dev": "wrangler dev",
+    "preview": "wrangler deploy --config wrangler.preview.toml",
+    "deploy": "node scripts/check-site.mjs --release && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
