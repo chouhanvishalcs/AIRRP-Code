@@ -2,6 +2,9 @@
   "_comment": "Set each gate to true only when the named owner has confirmed it. `npm run deploy` refuses to publish while any gate is false.",
   "pricingApproved": false,
   "tprmEndToEndValidated": false,
+  "productProofApproved": false,
+  "connectedExampleVerified": false,
   "privacyNoticeApproved": false,
-  "formTestedEndToEnd": false
+  "formTestedEndToEnd": false,
+  "buyerComprehensionTested": false
 }

@@ -38,6 +38,9 @@
     <symbol id="i-message" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></symbol>
     <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6v.2"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.3l2.7 2.7L16 9.6"/></symbol>
+    <symbol id="i-connect" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="12" r="2.5"/><circle cx="18.5" cy="5.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/><path d="M8 12h4.5l3.6-5.2M12.5 12l3.6 5.2"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   </defs>
 </svg>
 
@@ -66,7 +69,7 @@
 
 <main id="main">
 
-  <!-- Introduction (headline only — not a product section) -->
+  <!-- Introduction (headline only — not a product section) with the immediate AIRRP advantage -->
   <section class="hero" aria-labelledby="hero-title">
     <div class="container hero-grid">
       <div class="hero-copy">
@@ -77,72 +80,69 @@
           <a class="btn btn-mint" href="#capabilities">Explore Capabilities <svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
           <a class="btn btn-ghost" href="#contact" data-request="demo">Request Demo</a>
         </div>
-        <ul class="hero-themes" aria-label="How AIRRP works">
-          <li>Context-aware work</li>
-          <li>Governed reuse</li>
-          <li>Traceable decisions</li>
-        </ul>
       </div>
 
-      <div class="orbit" role="group" aria-label="Six AIRRP capabilities connected to one governed foundation">
-        <svg class="orbit-lines" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-          <circle class="ring" cx="50" cy="50" r="44"/>
-          <circle class="ring-dash" cx="50" cy="50" r="38"/>
-          <circle class="ring" cx="50" cy="50" r="26"/>
-          <line class="spoke" x1="50" y1="50" x2="50" y2="12"/>
-          <line class="spoke" x1="50" y1="50" x2="80" y2="31"/>
-          <line class="spoke" x1="50" y1="50" x2="80" y2="69"/>
-          <line class="spoke" x1="50" y1="50" x2="50" y2="88"/>
-          <line class="spoke" x1="50" y1="50" x2="20" y2="69"/>
-          <line class="spoke" x1="50" y1="50" x2="20" y2="31"/>
-          <line class="pulse" x1="50" y1="12" x2="50" y2="50"/>
-          <line class="pulse" x1="80" y1="31" x2="50" y2="50"/>
-          <line class="pulse" x1="80" y1="69" x2="50" y2="50"/>
-          <line class="pulse" x1="50" y1="88" x2="50" y2="50"/>
-          <line class="pulse" x1="20" y1="69" x2="50" y2="50"/>
-          <line class="pulse" x1="20" y1="31" x2="50" y2="50"/>
-        </svg>
-        <div class="orbit-core">
-          <small>One foundation</small>
-          <strong>Governed facts, controls, evidence &amp; decisions</strong>
-        </div>
-        <a class="orbit-node n1" href="#cap-compliance"><b>01</b>Compliance Management</a>
-        <a class="orbit-node n2" href="#cap-risk-assessments"><b>02</b>Risk Assessments</a>
-        <a class="orbit-node n3" href="#cap-risk-register"><b>03</b>Enterprise Risk Register</a>
-        <a class="orbit-node n4" href="#cap-tprm"><b>04</b>Third-Party Risk</a>
-        <a class="orbit-node n5" href="#cap-governance-documents"><b>05</b>Governance Documents</a>
-        <a class="orbit-node n6" href="#cap-questionnaires"><b>06</b>Customer Questionnaires</a>
+      <div class="why-panel" id="why-different">
+        <h2 id="why-title" class="why-title">Why AIRRP is different</h2>
+        <ol class="why-list">
+          <li class="why-item">
+            <span class="why-icon"><svg aria-hidden="true"><use href="#i-context"/></svg></span>
+            <div>
+              <h3>Enterprise context first</h3>
+              <p>AIRRP starts with the organisation’s business, applications, processing and technology context instead of treating every scope as identical.</p>
+              <a class="why-cue" href="#connected-example">Business context <i>→</i> applicable requirements</a>
+            </div>
+          </li>
+          <li class="why-item">
+            <span class="why-icon"><svg aria-hidden="true"><use href="#i-reuse"/></svg></span>
+            <div>
+              <h3>Govern once, reuse appropriately</h3>
+              <p>Approved organisational facts, canonical Master Controls and evidence can be reused across relevant obligations and workflows, subject to semantic coverage and permission.</p>
+              <a class="why-cue" href="#cap-governance-documents">Approved facts <i>→</i> governed document draft</a>
+            </div>
+          </li>
+          <li class="why-item">
+            <span class="why-icon"><svg aria-hidden="true"><use href="#i-trace"/></svg></span>
+            <div>
+              <h3>Explain why</h3>
+              <p>AIRRP shows the reasoning that links an applicability decision to a legal requirement, a control, evidence and accountable human decisions.</p>
+              <a class="why-cue" href="#cap-compliance">Requirement <i>→</i> control <i>→</i> evidence <i>→</i> approver</a>
+            </div>
+          </li>
+          <li class="why-item">
+            <span class="why-icon"><svg aria-hidden="true"><use href="#i-connect"/></svg></span>
+            <div>
+              <h3>Connect outcomes</h3>
+              <p>AIRRP links assessment findings to enterprise risk, treatment and related governance work instead of leaving isolated reports.</p>
+              <a class="why-cue" href="#cap-risk-register">Finding <i>→</i> risk register <i>→</i> owner <i>→</i> treatment</a>
+            </div>
+          </li>
+        </ol>
       </div>
     </div>
   </section>
 
-  <!-- 1. Capabilities -->
+  <!-- 1. Capabilities: six capabilities → one connected example → why connected work matters -->
   <section class="section" id="capabilities" aria-labelledby="capabilities-title">
     <div class="container">
-      <div class="section-head" data-reveal>
+      <div class="section-head">
         <span class="overline">Capabilities</span>
         <h2 id="capabilities-title">Six capabilities. One connected product.</h2>
-        <p>Each capability is shown the same way: what it does, how AIRRP does it differently, and why that is useful. All six work from the same governed enterprise information, so findings, controls, evidence and decisions stay connected.</p>
+        <p>Each capability shows what it does, how AIRRP does it differently, why a customer would choose it, and an example from the product. All six work from the same governed enterprise information.</p>
       </div>
 
-      <ul class="themes" aria-label="Three themes that run through every capability" data-reveal>
-        <li class="theme">
-          <span class="theme-icon"><svg aria-hidden="true"><use href="#i-context"/></svg></span>
-          <div><h3>Context-aware work</h3><p>AIRRP starts from the organisation, processing, systems and relationships actually in scope.</p></div>
-        </li>
-        <li class="theme">
-          <span class="theme-icon"><svg aria-hidden="true"><use href="#i-reuse"/></svg></span>
-          <div><h3>Governed reuse</h3><p>The same approved facts, controls and evidence can support more than one workflow, where appropriate.</p></div>
-        </li>
-        <li class="theme">
-          <span class="theme-icon"><svg aria-hidden="true"><use href="#i-trace"/></svg></span>
-          <div><h3>Traceable decisions</h3><p>You can see why something was selected, assessed or escalated, and who approved a material decision.</p></div>
-        </li>
-      </ul>
+      <nav class="cap-index" aria-label="The six capabilities">
+        <a href="#cap-compliance"><b>01</b>Compliance Management</a>
+        <a href="#cap-risk-assessments"><b>02</b>Risk Assessments</a>
+        <a href="#cap-risk-register"><b>03</b>Enterprise Risk Register</a>
+        <a href="#cap-tprm"><b>04</b>Third-Party Risk Management</a>
+        <a href="#cap-governance-documents"><b>05</b>Governance Document Intelligence</a>
+        <a href="#cap-questionnaires"><b>06</b>Customer Questionnaire Assistance</a>
+      </nav>
 
       <div class="cap-grid">
 
-        <article class="cap" id="cap-compliance" aria-labelledby="cap-compliance-title" data-reveal>
+        <article class="cap" id="cap-compliance" aria-labelledby="cap-compliance-title">
           <div class="cap-top"><span class="cap-icon"><svg aria-hidden="true"><use href="#i-compliance"/></svg></span><span class="cap-num">01</span></div>
           <h3 id="cap-compliance-title">Compliance Management</h3>
           <dl class="cap-body">
@@ -150,17 +150,17 @@
             <dd>Helps organisations identify relevant laws, regulations and frameworks, determine the requirements applicable to their context, and manage assessments against governed controls and evidence.</dd>
             <dt>How it works differently</dt>
             <dd>Reuses approved enterprise facts rather than starting from a generic questionnaire for every framework. Connects requirements to shared Master Controls, evidence expectations and explainable applicability decisions.</dd>
-            <dt>Why it’s useful</dt>
+            <dt>Why a customer would choose it</dt>
             <dd class="value">Less repeated interpretation and collection work; more consistent, traceable compliance assessments across programs.</dd>
           </dl>
-          <ul class="cap-tags" aria-label="Themes"><li>Context-aware</li><li>Governed reuse</li><li>Traceable</li></ul>
-          <div class="workflow">
-            <span class="workflow-label">Workflow</span>
-            <ol><li>Enterprise context</li><li>Applicable requirements</li><li>Governed controls and evidence</li><li>Assessment and decisions</li></ol>
-          </div>
+          <ol class="flow-chain" aria-label="Workflow"><li>Enterprise context</li><li>Applicable requirements</li><li>Governed controls and evidence</li><li>Assessment and decisions</li></ol>
+          <figure class="proof proof-pending" data-pending-proof>
+            <div class="proof-head"><span class="proof-label">Product proof</span><span class="proof-badge is-pending">Capture pending</span></div>
+            <p class="proof-placeholder"><strong>Will show:</strong> a scope answer, the applicable requirement it led to with the explanation, and the reusable control and evidence it maps to — so you can see why the requirement was selected.</p>
+          </figure>
         </article>
 
-        <article class="cap" id="cap-risk-assessments" aria-labelledby="cap-risk-assessments-title" data-reveal>
+        <article class="cap" id="cap-risk-assessments" aria-labelledby="cap-risk-assessments-title">
           <div class="cap-top"><span class="cap-icon"><svg aria-hidden="true"><use href="#i-assess"/></svg></span><span class="cap-num">02</span></div>
           <h3 id="cap-risk-assessments-title">Risk Assessments</h3>
           <dl class="cap-body">
@@ -168,17 +168,17 @@
             <dd>Supports assessment of business processes, AI applications, networks, servers, cloud environments and other in-scope business or technology subjects.</dd>
             <dt>How it works differently</dt>
             <dd>Uses the actual assessment subject and available enterprise context to select relevant controls, evidence and questions; links assessment findings to risk decisions instead of leaving assessments as isolated checklists.</dd>
-            <dt>Why it’s useful</dt>
+            <dt>Why a customer would choose it</dt>
             <dd class="value">More relevant assessments, clearer gaps, and an actionable connection from findings to risk management.</dd>
           </dl>
-          <ul class="cap-tags" aria-label="Themes"><li>Context-aware</li><li>Traceable</li></ul>
-          <div class="workflow">
-            <span class="workflow-label">Workflow</span>
-            <ol><li>Select subject</li><li>Understand scope and dependencies</li><li>Assess controls and evidence</li><li>Findings and risk decisions</li></ol>
-          </div>
+          <ol class="flow-chain" aria-label="Workflow"><li>Select subject</li><li>Understand scope and dependencies</li><li>Assess controls and evidence</li><li>Findings and risk decisions</li></ol>
+          <figure class="proof proof-pending" data-pending-proof>
+            <div class="proof-head"><span class="proof-label">Product proof</span><span class="proof-badge is-pending">Capture pending</span></div>
+            <p class="proof-placeholder"><strong>Will show:</strong> a real assessment subject — such as a business process, AI application or server — its tailored scope and control checks, and an attributable finding.</p>
+          </figure>
         </article>
 
-        <article class="cap" id="cap-risk-register" aria-labelledby="cap-risk-register-title" data-reveal>
+        <article class="cap" id="cap-risk-register" aria-labelledby="cap-risk-register-title">
           <div class="cap-top"><span class="cap-icon"><svg aria-hidden="true"><use href="#i-register"/></svg></span><span class="cap-num">03</span></div>
           <h3 id="cap-risk-register-title">Centralised Enterprise Risk Register</h3>
           <dl class="cap-body">
@@ -186,17 +186,21 @@
             <dd>Brings risks identified through different assessments and business activities into one enterprise risk register, with ownership, evaluation, treatment and tracking.</dd>
             <dt>How it works differently</dt>
             <dd>Preserves the connection between source findings, affected subjects, risk reasoning, human decisions and treatments rather than maintaining detached risk entries.</dd>
-            <dt>Why it’s useful</dt>
+            <dt>Why a customer would choose it</dt>
             <dd class="value">Better enterprise-wide visibility, less duplicate reporting and clearer accountability for risk decisions.</dd>
           </dl>
-          <ul class="cap-tags" aria-label="Themes"><li>Traceable</li></ul>
-          <div class="workflow">
-            <span class="workflow-label">Workflow</span>
-            <ol><li>Findings and risk inputs</li><li>Governed risk assessment</li><li>Owner/decision</li><li>Treatment and tracking</li></ol>
-          </div>
+          <ol class="flow-chain" aria-label="Workflow"><li>Findings and risk inputs</li><li>Governed risk assessment</li><li>Owner/decision</li><li>Treatment and tracking</li></ol>
+          <figure class="proof">
+            <div class="proof-head"><span class="proof-label">Product proof</span><span class="proof-badge">Development capture</span></div>
+            <a class="proof-shot" href="assets/product/risk-register.webp" data-viewer data-caption="AIRRP enterprise risk register (development environment, synthetic test data). Each risk shows where it came from — here, one finding from one assessment — with its inherent and current rating.">
+              <img src="assets/product/risk-register-focus.webp" width="570" height="175" loading="lazy" alt="AIRRP enterprise risk register row: risk AIRRP-ER-CONV-776B07699B, ‘Significant Data Fiduciary duties not met’, sourced from 1 finding from 1 assessment, inherent risk Medium 12 of 25.">
+              <span class="proof-zoom"><svg aria-hidden="true"><use href="#i-expand"/></svg><span class="visually-hidden">View full capture</span></span>
+            </a>
+            <figcaption>Each risk keeps its source: this record shows the finding and assessment it came from, alongside its inherent and current rating.</figcaption>
+          </figure>
         </article>
 
-        <article class="cap" id="cap-tprm" aria-labelledby="cap-tprm-title" data-reveal>
+        <article class="cap" id="cap-tprm" aria-labelledby="cap-tprm-title">
           <div class="cap-top"><span class="cap-icon"><svg aria-hidden="true"><use href="#i-thirdparty"/></svg></span><span class="cap-num">04</span></div>
           <h3 id="cap-tprm-title">Third-Party Risk Management</h3>
           <span class="cap-direction"><svg aria-hidden="true"><use href="#i-arrow"/></svg>You assess your third parties</span>
@@ -205,17 +209,17 @@
             <dd>Supports third-party relationship understanding, qualification, risk assessment, due diligence, evidence review and risk tracking across the relationship lifecycle.</dd>
             <dt>How it works differently</dt>
             <dd>Uses known business context and existing enterprise knowledge where available, reducing repeated requests for information and connecting third-party risks to the enterprise view.</dd>
-            <dt>Why it’s useful</dt>
+            <dt>Why a customer would choose it</dt>
             <dd class="value">More contextual vendor risk decisions and less fragmented third-party assurance work.</dd>
           </dl>
-          <ul class="cap-tags" aria-label="Themes"><li>Context-aware</li><li>Governed reuse</li></ul>
-          <div class="workflow">
-            <span class="workflow-label">Workflow</span>
-            <ol><li>Identify governed third-party relationship</li><li>Establish business context</li><li>Assess and review</li><li>Track risk and follow-up</li></ol>
-          </div>
+          <ol class="flow-chain" aria-label="Workflow"><li>Identify governed third-party relationship</li><li>Establish business context</li><li>Assess and review</li><li>Track risk and follow-up</li></ol>
+          <figure class="proof proof-pending" data-pending-proof>
+            <div class="proof-head"><span class="proof-label">Product proof</span><span class="proof-badge is-pending">Capture pending</span></div>
+            <p class="proof-placeholder"><strong>Will show:</strong> a verified third-party relationship, its business context and the risk review — added only after end-to-end testing passes.</p>
+          </figure>
         </article>
 
-        <article class="cap" id="cap-governance-documents" aria-labelledby="cap-governance-documents-title" data-reveal>
+        <article class="cap" id="cap-governance-documents" aria-labelledby="cap-governance-documents-title">
           <div class="cap-top"><span class="cap-icon"><svg aria-hidden="true"><use href="#i-document"/></svg></span><span class="cap-num">05</span></div>
           <h3 id="cap-governance-documents-title">Governance Document Intelligence</h3>
           <dl class="cap-body">
@@ -223,17 +227,21 @@
             <dd>Helps create comprehensive policies, procedures, standards, baselines, plans and privacy notices.</dd>
             <dt>How it works differently</dt>
             <dd>Builds drafts using governed organisational facts and available regulatory/control context, followed by review and approval instead of producing generic, context-free templates.</dd>
-            <dt>Why it’s useful</dt>
+            <dt>Why a customer would choose it</dt>
             <dd class="value">Documents can be more consistent with the organisation’s actual environment, reducing drafting effort and rework.</dd>
           </dl>
-          <ul class="cap-tags" aria-label="Themes"><li>Context-aware</li><li>Governed reuse</li><li>Traceable</li></ul>
-          <div class="workflow">
-            <span class="workflow-label">Workflow</span>
-            <ol><li>Select document</li><li>Use governed knowledge</li><li>Draft</li><li>Review and approve</li></ol>
-          </div>
+          <ol class="flow-chain" aria-label="Workflow"><li>Select document</li><li>Use governed knowledge</li><li>Draft</li><li>Review and approve</li></ol>
+          <figure class="proof">
+            <div class="proof-head"><span class="proof-label">Product proof</span><span class="proof-badge">Development capture</span></div>
+            <a class="proof-shot" href="assets/product/governed-document.webp" data-viewer data-caption="AIRRP Governance Document Intelligence (development environment, synthetic test data). Before drafting a privacy notice, AIRRP lists what it already knows and the governed facts it will use, then asks a person to confirm what it could not resolve.">
+              <img src="assets/product/governed-document-focus.webp" width="510" height="294" loading="lazy" alt="AIRRP ‘What AIRRP knows’ panel for a privacy notice: governed topic, document type, existing governance documents (0), applicable requirements (22), Master Controls (19), evidence expectations (0) and governed enterprise facts (4 resolved).">
+              <span class="proof-zoom"><svg aria-hidden="true"><use href="#i-expand"/></svg><span class="visually-hidden">View full capture</span></span>
+            </a>
+            <figcaption>Before drafting a privacy notice, AIRRP shows the requirements, Master Controls and resolved enterprise facts it will use, and asks a person to confirm anything it could not resolve.</figcaption>
+          </figure>
         </article>
 
-        <article class="cap" id="cap-questionnaires" aria-labelledby="cap-questionnaires-title" data-reveal>
+        <article class="cap" id="cap-questionnaires" aria-labelledby="cap-questionnaires-title">
           <div class="cap-top"><span class="cap-icon"><svg aria-hidden="true"><use href="#i-questionnaire"/></svg></span><span class="cap-num">06</span></div>
           <h3 id="cap-questionnaires-title">Customer Security and Compliance Questionnaire Assistance</h3>
           <span class="cap-direction"><svg class="flip" aria-hidden="true"><use href="#i-arrow"/></svg>Your customers assess you</span>
@@ -242,19 +250,20 @@
             <dd>Helps organisations prepare responses to due-diligence, security, privacy and compliance questionnaires received from their own customers.</dd>
             <dt>How it works differently</dt>
             <dd>Draws on approved organisational facts, governance documents, controls and evidence already available in AIRRP, with human review of proposed responses.</dd>
-            <dt>Why it’s useful</dt>
+            <dt>Why a customer would choose it</dt>
             <dd class="value">Faster, more consistent customer assurance responses without repeatedly collecting the same information.</dd>
           </dl>
-          <ul class="cap-tags" aria-label="Themes"><li>Governed reuse</li><li>Traceable</li></ul>
-          <div class="workflow">
-            <span class="workflow-label">Workflow</span>
-            <ol><li>Receive questionnaire</li><li>Reuse approved information</li><li>Prepare responses</li><li>Review and finalise</li></ol>
-          </div>
+          <ol class="flow-chain" aria-label="Workflow"><li>Receive questionnaire</li><li>Reuse approved information</li><li>Prepare responses</li><li>Review and finalise</li></ol>
+          <figure class="proof proof-pending" data-pending-proof>
+            <div class="proof-head"><span class="proof-label">Product proof</span><span class="proof-badge is-pending">Capture pending</span></div>
+            <p class="proof-placeholder"><strong>Will show:</strong> a customer questionnaire response drafted from approved facts and evidence, with its source reference and review checkpoint.</p>
+          </figure>
         </article>
 
       </div>
+      <p class="capture-note">Product captures come from the AIRRP development environment with synthetic test data, cropped for publication. Select a capture to see it in full.</p>
 
-      <div class="directions on-dark" data-reveal>
+      <div class="directions on-dark">
         <div>
           <span class="overline">Two directions of assurance</span>
           <h3 id="directions-title">Third-party risk and customer questionnaires are separate capabilities.</h3>
@@ -275,13 +284,79 @@
           </div>
         </div>
       </div>
+
+      <!-- One connected example (brief §3.7). Scenario must be an actual tested AIRRP scenario; see release gate connectedExampleVerified. -->
+      <div class="connected" id="connected-example">
+        <div class="connected-head">
+          <span class="overline">One connected example</span>
+          <h3 id="connected-title">One application, understood once, informing every connected decision.</h3>
+          <p>Synthetic example: an <strong>Employee HR Management System</strong> at <em>AIRRP Demo Organization – Technology</em>. It handles workforce personal data and may use an external provider.</p>
+        </div>
+        <ol class="connected-steps">
+          <li class="cstep">
+            <span class="cstep-num">1</span>
+            <h4>Understand once</h4>
+            <p>Record the application, business owner, processing context, connected systems and relevant third-party relationships.</p>
+            <ul class="cstep-tags"><li>Business owner</li><li>Workforce personal data</li><li>Connected systems</li></ul>
+          </li>
+          <li class="cstep">
+            <span class="cstep-num">2</span>
+            <h4>Determine obligations</h4>
+            <p>Use that context to identify applicable requirements and reuse the appropriate governed controls and evidence.</p>
+            <ul class="cstep-tags"><li>Applicable requirements</li><li>Reused Master Controls</li><li>Evidence expectations</li></ul>
+          </li>
+          <li class="cstep">
+            <span class="cstep-num">3</span>
+            <h4>Assess and decide</h4>
+            <p>Evaluate control and evidence coverage for the application, and link material findings to the enterprise risk register and human decisions.</p>
+            <ul class="cstep-tags"><li>Coverage gaps</li><li>Risk register</li><li>Owner decision</li></ul>
+          </li>
+          <li class="cstep">
+            <span class="cstep-num">4</span>
+            <h4>Reuse governed knowledge</h4>
+            <p>Relevant approved facts support governance documents and customer questionnaire responses, each with human review.</p>
+            <ul class="cstep-tags"><li>Privacy notice</li><li>Policies</li><li>Customer questionnaires</li></ul>
+          </li>
+          <li class="cstep cstep-gated" data-gate="tprm" hidden>
+            <span class="cstep-num">5</span>
+            <h4>Third-party path</h4>
+            <p>The external provider’s relationship is reviewed in Third-Party Risk Management and its risk joins the same enterprise view.</p>
+            <ul class="cstep-tags"><li>Third-party relationship</li><li>Risk review</li></ul>
+          </li>
+        </ol>
+        <p class="connected-takeaway"><svg aria-hidden="true"><use href="#i-reuse"/></svg><span><strong>The same governed enterprise information informs multiple connected decisions</strong> — less repeated entry and less disconnected work. People review and approve each material decision.</span></p>
+      </div>
+
+      <!-- Why connected work matters (brief §4) — must stay immediately before Pricing -->
+      <div class="value on-dark" id="why-connected">
+        <div class="value-head">
+          <span class="overline">Why choose AIRRP</span>
+          <h3 id="value-title">Why connected work matters</h3>
+          <p class="value-message">You are paying for <strong>connected decisions, governed reuse and traceability</strong> — not simply another six-module feature list.</p>
+        </div>
+        <div class="value-table-wrap">
+          <table class="value-table">
+            <caption class="visually-hidden">Disconnected work compared with AIRRP’s governed, connected approach</caption>
+            <thead>
+              <tr><th scope="col">When work is disconnected</th><th scope="col">AIRRP’s governed, connected approach</th><th scope="col">Practical buyer value</th></tr>
+            </thead>
+            <tbody>
+              <tr><td data-label="When work is disconnected">Enterprise facts collected again for each activity</td><td data-label="AIRRP’s approach">Reuse approved enterprise context where relevant</td><td data-label="Buyer value">Less repeat collection and inconsistent answers</td></tr>
+              <tr><td data-label="When work is disconnected">Similar requirements assessed in separate silos</td><td data-label="AIRRP’s approach">Reuse semantically sufficient canonical controls and evidence</td><td data-label="Buyer value">More consistent coverage and a traceable assessment trail</td></tr>
+              <tr><td data-label="When work is disconnected">Findings become detached spreadsheet entries</td><td data-label="AIRRP’s approach">Link findings to enterprise risk ownership, decisions and treatment</td><td data-label="Buyer value">Clearer accountability and follow-through</td></tr>
+              <tr><td data-label="When work is disconnected">Documents and questionnaires start from scratch</td><td data-label="AIRRP’s approach">Reuse relevant approved facts, documents and evidence with human review</td><td data-label="Buyer value">Reduced rework and more consistent assurance responses</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="value-note">Required approvals and manual checks stay in place. Pricing follows below.</p>
+      </div>
     </div>
   </section>
 
   <!-- 2. Pricing -->
   <section class="section section-white" id="pricing" aria-labelledby="pricing-title">
     <div class="container">
-      <div class="section-head" data-reveal>
+      <div class="section-head">
         <span class="overline">Pricing</span>
         <h2 id="pricing-title">What you pay for, and why.</h2>
         <p>AIRRP is licensed on the charging units below. The table shows what each unit covers, its term, any volume conditions and what is quoted separately. Your licence scope confirms which of the six capabilities are included — not every licence includes all six.</p>
@@ -293,7 +368,7 @@
         <span><strong>Preview for content approval.</strong> Rows show the cost drivers already published on the AIRRP licensing page. Term, volume conditions and prices will be filled in from the approved AIRRP pricing source before release; no figures are shown until then.</span>
       </p>
 
-      <div class="price-table-wrap" data-reveal>
+      <div class="price-table-wrap">
         <table class="price-table">
           <caption class="visually-hidden">AIRRP charging units</caption>
           <thead>
@@ -348,24 +423,12 @@
         </table>
       </div>
 
-      <div class="pricing-foot">
-        <div class="pricing-value" data-reveal>
-          <h3>Why connected capabilities add value</h3>
-          <p>Approved enterprise facts, controls and evidence are governed once in AIRRP. When your licence includes more than one capability, the same approved information can support several workflows instead of being collected again for each:</p>
-          <ul>
-            <li>Compliance assessments</li>
-            <li>Risk assessments and the risk register</li>
-            <li>Governance documents</li>
-            <li>Customer questionnaire responses</li>
-          </ul>
+      <div class="pricing-ask">
+        <div>
+          <h3>Need figures for your scope?</h3>
+          <p>Tell us which capabilities and how much assessment work you have in mind, and we’ll reply with the pricing that applies.</p>
         </div>
-        <div class="pricing-ask" data-reveal>
-          <div>
-            <h3>Need figures for your scope?</h3>
-            <p>Tell us which capabilities and how much assessment work you have in mind, and we’ll reply with the pricing that applies.</p>
-          </div>
-          <a class="btn btn-saffron" href="#contact" data-request="contact" data-topic="Pricing for our scope: ">Ask about pricing <svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
-        </div>
+        <a class="btn btn-saffron" href="#contact" data-request="contact" data-topic="Pricing for our scope: ">Ask about pricing <svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
       </div>
     </div>
   </section>
@@ -373,7 +436,7 @@
   <!-- 3. Request Demo / Contact Us -->
   <section class="contact on-dark" id="contact" aria-labelledby="contact-title">
     <div class="container contact-grid">
-      <div data-reveal>
+      <div>
         <span class="overline">Request Demo · Contact Us</span>
         <h2 id="contact-title">Talk to the AIRRP team.</h2>
         <p class="contact-intro">Ask for a demonstration of the capabilities that matter to you, or send us a question. One short form — we only ask for what we need to reply.</p>
@@ -385,7 +448,7 @@
         <p class="direct-email">Prefer email? Write to <a href="mailto:airrp@dsrdt.com">airrp@dsrdt.com</a></p>
       </div>
 
-      <div class="form-card" data-reveal>
+      <div class="form-card">
         <form class="lead-form" id="lead-form" action="mailto:airrp@dsrdt.com" method="post" enctype="text/plain" novalidate>
           <fieldset class="type-switch full">
             <legend>Request type</legend>
@@ -478,5 +541,10 @@
     </div>
   </div>
 </footer>
+<dialog class="viewer" id="proof-viewer" aria-labelledby="viewer-caption">
+  <form method="dialog" class="viewer-bar"><button class="viewer-close" type="submit" aria-label="Close capture"><svg aria-hidden="true"><use href="#i-close"/></svg></button></form>
+  <img class="viewer-img" id="viewer-img" alt="">
+  <p class="viewer-caption" id="viewer-caption"></p>
+</dialog>
 </body>
 </html>

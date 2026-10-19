@@ -1,8 +1,6 @@
-// AIRRP product site: navigation, scroll-spy, reveal, and the Request Demo / Contact Us form.
+// AIRRP product site: navigation, scroll-spy, product capture viewer, and the Request Demo / Contact Us form.
 (() => {
   'use strict';
-  // Reveal styles apply only once this script runs, so content stays visible if it never loads.
-  document.documentElement.classList.add('js');
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const TEAM_EMAIL = 'airrp@dsrdt.com';
@@ -29,9 +27,8 @@
   });
   matchMedia('(min-width: 961px)').addEventListener('change', (e) => { if (e.matches) setMenu(false); });
 
-  /* ---------- scroll-spy + reveal ---------- */
+  /* ---------- scroll-spy ---------- */
   const spyLinks = $$('[data-spy]');
-  const reveal = $$('[data-reveal]');
   if ('IntersectionObserver' in window) {
     const watched = [$('.hero'), ...spyLinks.map((a) => document.getElementById(a.dataset.spy))].filter(Boolean);
     const spy = new IntersectionObserver((entries) => {
@@ -41,21 +38,28 @@
       }
     }, { rootMargin: '-45% 0px -50% 0px' });
     watched.forEach((el) => spy.observe(el));
+  }
 
-    if (!reducedMotion) {
-      // stagger siblings that enter together (e.g. a row of capability cards)
-      $$('.cap-grid > [data-reveal]').forEach((el, i) => { el.style.transitionDelay = `${(i % 3) * 80}ms`; });
-      const shower = new IntersectionObserver((entries, obs) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) { entry.target.classList.add('is-visible'); obs.unobserve(entry.target); }
-        }
-      }, { rootMargin: '0px 0px -6% 0px', threshold: 0.06 });
-      reveal.forEach((el) => shower.observe(el));
-    } else {
-      reveal.forEach((el) => el.classList.add('is-visible'));
-    }
-  } else {
-    reveal.forEach((el) => el.classList.add('is-visible'));
+  /* ---------- product capture viewer ---------- */
+  // Each proof thumbnail links to the full capture; with JavaScript it opens in a dialog instead of a new page.
+  const viewer = $('#proof-viewer');
+  if (viewer && typeof viewer.showModal === 'function') {
+    const viewerImg = $('#viewer-img');
+    const viewerCaption = $('#viewer-caption');
+    let opener = null;
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a[data-viewer]');
+      if (!link) return;
+      e.preventDefault();
+      opener = link;
+      const thumb = link.querySelector('img');
+      viewerImg.src = link.getAttribute('href');
+      viewerImg.alt = thumb ? thumb.alt : '';
+      viewerCaption.textContent = link.dataset.caption || '';
+      viewer.showModal();
+    });
+    viewer.addEventListener('click', (e) => { if (e.target === viewer) viewer.close(); });
+    viewer.addEventListener('close', () => { viewerImg.removeAttribute('src'); opener?.focus(); });
   }
 
   /* ---------- lead form ---------- */

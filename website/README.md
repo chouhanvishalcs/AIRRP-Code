@@ -1,24 +1,28 @@
 # AIRRP product website
 
-A single, capability-led page built from the *AIRRP Website Build Brief (Focused)*. It has three content areas, reached from a fixed navigation bar: **Capabilities | Pricing | Request Demo | Contact Us**.
+A single, capability-led page built to the *AIRRP Website Build Brief V2 (Differentiation)*. Navigation is **Capabilities | Pricing | Request Demo | Contact Us**, and the content follows the order V2 requires:
 
-| Area | What is on it |
-| --- | --- |
-| Headline (not a section) | “AIRRP: Connected Compliance, Risk and Governance”, the two calls to action, and a map of the six capabilities around one governed foundation (each node links to its card) |
-| Capabilities | The three themes (context-aware work, governed reuse, traceable decisions), then six cards. Each card shows *what it does → how it works differently → why it’s useful* plus a four-step workflow, using the brief’s copy word for word. A separate panel keeps TPRM (*you assess your third parties*) apart from Questionnaire Assistance (*your customers assess you*). |
-| Pricing | A table of charging units with columns for what’s included, term, volume conditions and price, plus a note on why connected capabilities add value and an “Ask about pricing” link to the form. **Figures are pending (see below).** |
-| Request Demo / Contact Us | One short form with a request-type switch. Name, work email and organisation are required; the message is optional. Includes a privacy statement and success/failure feedback. |
+| Order | Block | What is on it |
+| --- | --- | --- |
+| 1 | Headline + immediate advantage | V2 hero copy and buttons, with **“Why AIRRP is different”** beside it: four differentiators (enterprise context first; govern once, reuse appropriately; explain why; connect outcomes), each with a workflow cue that links to its evidence. All four start above the fold on desktop and laptop. |
+| 2 | Six capabilities | Six visible cards, each showing **what it does → how it works differently → why a customer would choose it → product proof**, plus the four-step workflow. The brief’s copy is used word for word. TPRM (*you assess your third parties*) and Questionnaire Assistance (*your customers assess you*) are kept visibly separate. |
+| 3 | One connected example | The Employee HR Management System scenario: understand once → determine obligations → assess and decide → reuse governed knowledge, ending with the visitor takeaway. Horizontal on desktop, vertical on mobile. The TPRM step is built but hidden until TPRM is verified. |
+| 4 | Why connected work matters | V2’s disconnected-vs-connected comparison table and commercial message, placed directly before Pricing. |
+| 5 | Pricing | Charging-unit table (what’s included, term, volume conditions, price) plus “Ask about pricing”. **Figures are pending (see below).** |
+| 6 | Request Demo / Contact Us | One short form with a request-type switch; name, work email and organisation are required and the message is optional. |
 
-Look and feel: the midnight-teal gradient, mint headline accent and mint buttons of airrp.dsrdt.com, plus **saffron** (`#FF9933`) as the accent for anything that means *talk to us* (Request Demo, form submit, Ask about pricing) and for the overlines. The approved AIRRP logo (gold mark) comes from the brand assets. Inter is self-hosted (SIL OFL, `public/assets/fonts/OFL-Inter.txt`), so the page loads no third-party fonts, analytics or trackers.
+Look and feel: the midnight-teal gradient, mint accent and mint buttons of airrp.dsrdt.com, with **saffron** (`#FF9933`) for anything that means *talk to us* and for the section labels. The approved AIRRP logo (gold mark) comes from the brand assets. Inter is self-hosted (SIL OFL), so there are no third-party fonts, analytics or trackers. V2 asks for no unnecessary animation, so there is none beyond hover feedback.
 
 ```
 website/
-  public/            static site served as-is (index.html, privacy.html, 404.html, assets/, _headers)
-  src/enquiry.js     form API: validation, Turnstile, team email, acknowledgement, optional CRM webhook
-  worker.js          Cloudflare Worker: /api/enquiry-config, /api/enquiry, everything else from public/
-  test/              node:test tests for the form API and Worker routing (no dependencies)
-  scripts/check-site.mjs   acceptance checks for the brief (§8) and the release gates
-  release-gates.json       owner sign-offs required before `npm run deploy` will publish
+  public/              static site (index.html, privacy.html, 404.html, assets/, _headers)
+  public/assets/product/   genuine AIRRP development captures used as product proof
+  src/enquiry.js       form API: validation, Turnstile, team email, acknowledgement, optional CRM webhook
+  worker.js            Cloudflare Worker: /api/enquiry-config, /api/enquiry, everything else from public/
+  test/                node:test tests for the form API and Worker routing
+  scripts/check-site.mjs   V2 acceptance checks and release gates
+  release-gates.json   owner sign-offs required before `npm run deploy` will publish
+  QA-EVIDENCE.md, qa/  V2 §9 QA evidence sheet with desktop/mobile screenshots
 ```
 
 ## Run it
@@ -26,65 +30,74 @@ website/
 ```bash
 cd website
 npm test                      # form API + Worker routing tests (Node 20+, no install needed)
-npm run check                 # brief acceptance checks; warns about pending pricing and open gates
+npm run check                 # V2 acceptance checks; warns about pending pricing, proof and open gates
 python3 -m http.server -d public 8080   # static preview: the form falls back to the visitor's email app
-npm install && npx wrangler dev         # Worker preview (needs .dev.vars, see below)
+npm install && npx wrangler dev         # Worker preview (configure secrets first, see below)
+npm run preview               # separate workers.dev URL for content approval (wrangler.preview.toml)
+npm run deploy                # replaces the "airrp-website" Worker on airrp.dsrdt.com, only once every release check passes
 ```
 
-Deployment uses the same Cloudflare setup as the current site:
+## Product proof
 
-```bash
-npm run preview   # separate workers.dev URL for content approval (wrangler.preview.toml)
-npm run deploy    # replaces the "airrp-website" Worker on airrp.dsrdt.com, but only once every release check passes
-```
+V2 needs one genuine product example per capability. Two are in place, both cropped from development captures already published on the current site (synthetic test data):
+
+| Capability | Proof | Status |
+| --- | --- | --- |
+| 03 Enterprise Risk Register | `assets/product/risk-register.webp`: a risk record showing its source finding and assessment | In use; a capture that also shows owner, decision and treatment state would match V2 more closely |
+| 05 Governance Document Intelligence | `assets/product/governed-document.webp`: “What AIRRP knows”, the facts used, and facts to confirm | In use |
+| 01, 02, 04, 06 | — | Pending. Each card says what its proof will show. |
+
+To add one, put the full capture and a cropped thumbnail in `public/assets/product/`. Then replace that card’s `<figure class="proof proof-pending" data-pending-proof>` with the markup used on card 03: a link to the full capture with `data-viewer` and `data-caption`, a thumbnail with descriptive `alt`, and a one-line `figcaption`. Use synthetic or redacted data only. Clicking a thumbnail opens the full capture in a viewer.
 
 ## Request Demo / Contact Us routing
 
 When the Worker is configured, a submission is:
+1. checked: same origin, JSON only, size limit, field rules, a hidden honeypot field, and Cloudflare Turnstile verified on the server;
+2. emailed to the monitored inbox `ALERT_TO_EMAIL`. The subject starts `[AIRRP Request Demo]` or `[AIRRP Contact Us]`, the email carries a `request_type` tag, and Reply-To is the visitor;
+3. optionally posted to `CRM_WEBHOOK_URL`;
+4. acknowledged to the visitor on screen and by a fixed-text email that never repeats visitor-supplied text.
 
-1. checked: same origin, JSON only, size limit, field rules, a hidden honeypot field, and Cloudflare Turnstile verified on the server (hostname and the `enquiry` action);
-2. emailed to the monitored inbox `ALERT_TO_EMAIL`. The subject is `[AIRRP Request Demo] …` or `[AIRRP Contact Us] …`, the email carries a `request_type` tag, and Reply-To is the visitor, so the team can sort and reply directly;
-3. optionally posted as JSON to `CRM_WEBHOOK_URL`;
-4. acknowledged to the visitor on screen, and by a fixed-text email (no visitor-supplied text is echoed, so the form can’t be used to send spam from your domain).
+If team delivery fails, the visitor sees an error and the email address, never a false success. Submissions are not stored.
 
-If team delivery fails, the visitor sees an error and the email address. They never see a false success. The code does not store submissions.
-
-Configuration (Cloudflare secrets/vars; the names match the existing site, so current values carry over):
-
-| Name | Required | Purpose |
+| Setting | Required | Purpose |
 | --- | --- | --- |
-| `PUBLIC_ENQUIRY_ENABLED` | yes | must be `true` to switch the form on |
-| `RESEND_API_KEY` | yes | transactional email (Resend) |
-| `FROM_EMAIL` | yes | verified sender, e.g. `AIRRP <no-reply@dsrdt.com>` |
+| `PUBLIC_ENQUIRY_ENABLED` | yes | `true` switches the form on |
+| `RESEND_API_KEY`, `FROM_EMAIL` | yes | transactional email and a verified sender |
 | `ALERT_TO_EMAIL` | yes | monitored team inbox |
-| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET` | yes | Turnstile widget for this hostname (add the preview hostname too) |
-| `SEND_ACKNOWLEDGEMENT` | no | set `false` to skip the visitor email |
-| `CRM_WEBHOOK_URL`, `CRM_WEBHOOK_SECRET` | no | also send each request to an approved CRM (Bearer auth) |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET` | yes | Turnstile widget for the site and preview hostnames |
+| `SEND_ACKNOWLEDGEMENT` | no | `false` skips the visitor email |
+| `CRM_WEBHOOK_URL`, `CRM_WEBHOOK_SECRET` | no | also send each request to an approved CRM |
 
-Until every required value is set, `/api/enquiry-config` reports `ready:false`. The button then reads **Continue in email** and opens a pre-filled email to airrp@dsrdt.com, so the button always does something (the brief’s “no non-working buttons”). Without JavaScript the form also falls back to `mailto:`.
+These are the same setting names the existing site uses. Until all the required ones are set, the button reads **Continue in email** and opens a pre-filled email to airrp@dsrdt.com, so it never does nothing.
 
 ## Populating pricing (required before release)
 
-The brief says pricing must come from the approved source supplied by the product owner, and no figures may be invented. Until that source is supplied, the table shows the cost drivers already published on the current licensing page, with **Approved term / conditions / price** placeholders and a visible preview notice.
-
-To publish:
-1. Edit the rows between `<!-- PRICING:START -->` and `<!-- PRICING:END -->` in `public/index.html` to match the approved model exactly: charging units, annual term where applicable, what’s included, volume conditions, what needs a separate quotation. Add or remove rows as the model requires.
-2. Remove every `data-pending` placeholder and the `data-preview-notice` paragraph.
-3. Set `"pricingApproved": true` in `release-gates.json`.
+Edit the rows between `<!-- PRICING:START -->` and `<!-- PRICING:END -->` in `public/index.html` to match the approved model exactly. Remove every `data-pending` placeholder and the `data-preview-notice` paragraph, then set `pricingApproved`. Until then, the check refuses any currency figure on the page.
 
 ## Release gates
 
-`npm run deploy` runs `check-site.mjs --release` first and refuses to publish while any of these is open:
+`npm run deploy` runs `check-site.mjs --release` and refuses to publish while any of these is open:
 
 | Gate | Owner confirms |
 | --- | --- |
-| `pricingApproved` | pricing table matches the approved model exactly (brief §5, checklist 5) |
-| `tprmEndToEndValidated` | TPRM end-to-end testing is complete and the TPRM card’s claims match the demonstrable workflow (brief §3.4 release note, checklist 7) |
-| `privacyNoticeApproved` | `public/privacy.html` is replaced with the legally approved notice (the current text is the existing working draft, updated to describe this form) |
-| `formTestedEndToEnd` | a real submission of each request type reached the inbox/CRM with the right type and the visitor got the acknowledgement (checklist 6) |
+| `pricingApproved` | pricing matches the approved source exactly |
+| `tprmEndToEndValidated` | TPRM end-to-end test passed. Only then add the TPRM capture and show connected-example step 5 (remove its `hidden`). |
+| `productProofApproved` | all six proof captures are genuine, use synthetic/redacted data and are approved for publication |
+| `connectedExampleVerified` | the HR system example is an actually tested AIRRP scenario and the steps match what the product does |
+| `privacyNoticeApproved` | `public/privacy.html` is the legally approved notice |
+| `formTestedEndToEnd` | a real submission of each request type reached the inbox/CRM correctly labelled and the visitor got the acknowledgement |
+| `buyerComprehensionTested` | the V2 10–15 s / 30–45 s comprehension test was run and unclear points fixed (script in `QA-EVIDENCE.md`) |
 
-## What was checked
+## What is checked automatically
 
-- Brief §8 checks run automatically by `npm run check`: one page with three areas, the four nav items, six named capabilities each with what/how/why and a four-step workflow, TPRM kept distinct from Questionnaire Assistance, required and optional form fields, privacy link, no superlatives/competitor names/blog/testimonials/unapproved prices, anchors and local files resolve, images have alt text, and the CSP hash matches the inline script.
-- Form API: 17 tests (`npm test`) covering configuration gating, origin/content-type/size checks, validation, honeypot, Turnstile failure modes, routing by request type, acknowledgement content, delivery failure, the optional CRM webhook and header-injection attempts.
-- In the browser: Chromium at 1440 / 900 / 390 px with no horizontal scrolling; the menu, scroll-spy, request-type pre-selection, validation and focus handling, email fallback, and secure-mode success/failure, all under the production CSP; an axe-core WCAG 2.1 AA scan with no violations on all pages.
+- `npm run check`:
+  - structure: one page with three areas, the four nav items, the four hero differentiators with cues, six named cards each with the four V2 parts and a four-step workflow;
+  - content order;
+  - the connected example has four or more visible steps and the TPRM step stays hidden while its gate is open;
+  - the value table sits directly before Pricing;
+  - TPRM is kept separate from questionnaires;
+  - form fields and privacy link;
+  - no superlatives, competitor names, “How AIRRP works”, “AI-powered”, blog/testimonials or unapproved prices;
+  - anchors and files resolve, captures have descriptive alt text, and the CSP allows every inline script.
+- `npm test`: 17 form-API and routing tests.
+- Browser (see `QA-EVIDENCE.md`): 1440 to 320 px with no horizontal scroll; 40 interaction checks under the production CSP; axe-core WCAG 2.1 AA with no violations.
